@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "sourceSite": "http://jfy.app-test1.com",
+  "sourcePage": "http://jfy.app-test1.com/index.html?cate_id=4&sub_cate_id=5",
+  "product": {
+    "id": 1,
+    "name": "卡纸盒-双插盒",
+    "publicApi": "http://jfy.app-test1.com/api/product/product/5"
+  },
+  "authorization": "Imported at the user's request for this project from the supplied public test site; no independent license or redistribution rights are asserted.",
+  "command": "node tools/import-public-assets.mjs",
+  "assets": [
+    {
+      "id": "logo",
+      "kind": "branding",
+      "file": "logo.png",
+      "localPath": "/merchant/default/logo.png",
+      "sourceUrl": "http://jfy.app-test1.com/images/logo.png",
+      "discoveredAt": "http://jfy.app-test1.com/components/header.js?v=1.0.3",
+      "sourceContentType": "image/png",
+      "contentType": "image/png",
+      "bytes": 3404,
+      "sha256": "83f2cf92744bb3d81b08ec7ee33878c876701e9dab01b5b2bed31d696a21ecd1"
+    },
+    {
+      "id": "foldingBox",
+      "kind": "product",
+      "file": "folding-box.jpg",
+      "localPath": "/merchant/default/folding-box.jpg",
+      "sourceUrl": "http://jfy.app-test1.com/storage/product/20211105/a44ab2d9de798b3be9f3d3b1d5b28c24.png",
+      "discoveredAt": "http://jfy.app-test1.com/api/product/product/5",
+      "sourceContentType": "image/png",
+      "contentType": "image/jpeg",
+      "bytes": 26890,
+      "sha256": "e4eee754440e85fbc17f844818c829dc691e973d1de2e1a038680fdc8a267218"
+    },
+    {
+      "id": "foldingBoxDetail1",
+      "kind": "content",
+      "file": "folding-box-detail-1.jpg",
+      "localPath": "/merchant/default/folding-box-detail-1.jpg",
+      "sourceUrl": "http://jfy.app-test1.com/storage/editor/20210924/6bb9f0d805b0aaea637d33ef3c8fafa7.jpg",
+      "discoveredAt": "http://jfy.app-test1.com/api/product/product/5",
+      "sourceContentType": "image/jpeg",
+      "contentType": "image/jpeg",
+      "bytes": 158927,
+      "sha256": "c386a500d39d8e28c032d66f5d82f14bab226a97094738a456654a921469c8c8"
+    },
+    {
+      "id": "foldingBoxDetail2",
+      "kind": "content",
+      "file": "folding-box-detail-2.jpg",
+      "localPath": "/merchant/default/folding-box-detail-2.jpg",
+      "sourceUrl": "http://jfy.app-test1.com/storage/editor/20210924/553961824d0a0f1ea92f3f1242025469.jpg",
+      "discoveredAt": "http://jfy.app-test1.com/api/product/product/5",
+      "sourceContentType": "image/jpeg",
+      "contentType": "image/jpeg",
+      "bytes": 206818,
+      "sha256": "e81cd24c6e9e3dc8e3304074fad1b0ee86f678210f3e0c96cd785695dd1bb62e"
+    }
+  ]
+}

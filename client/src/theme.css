@@ -1,0 +1,77 @@
+/* Element Plus 主题令牌：与 PBQuote 品牌色对齐 */
+:root {
+  color-scheme: light;
+  --sf-main: var(--sf-main);
+  --sf-strong: var(--sf-strong);
+  --sf-light: var(--sf-light);
+  --sf-soft: var(--sf-soft);
+  --sf-border: var(--sf-border);
+  --el-color-primary: var(--sf-main);
+  --el-color-primary-light-3: var(--sf-light);
+  --el-color-primary-light-5: var(--sf-light);
+  --el-color-primary-light-7: var(--sf-light);
+  --el-color-primary-light-8: var(--sf-light);
+  --el-color-primary-light-9: var(--sf-soft);
+  --el-color-primary-dark-2: var(--sf-strong);
+  --el-border-radius-base: 8px;
+  --el-font-family: inherit;
+}
+.el-select, .el-input-number, .el-input { vertical-align: middle; }
+
+/* 聚焦提示：中性灰 */
+.el-input__wrapper.is-focus,
+.el-textarea__inner:focus { box-shadow: 0 0 0 1px #c3c9c4 inset !important; }
+.el-select__wrapper.is-focused,
+.el-select__wrapper.is-focus { box-shadow: 0 0 0 1px #c3c9c4 inset !important; }
+.el-input__inner { caret-color: var(--sf-main); }
+
+/* 硬编码兜底：主按钮强制品牌绿（防止 CSS 变量缺失回退） */
+.el-button--primary {
+  --el-button-bg-color: var(--sf-main);
+  --el-button-border-color: var(--sf-main);
+  --el-button-hover-bg-color: var(--sf-light);
+  --el-button-hover-border-color: var(--sf-light);
+  --el-button-active-bg-color: var(--sf-strong);
+  --el-button-active-border-color: var(--sf-strong);
+  --el-button-text-color: #ffffff;
+  --el-button-hover-text-color: #ffffff;
+}
+.el-button--primary.is-plain {
+  --el-button-bg-color: var(--sf-soft);
+  --el-button-border-color: var(--sf-light);
+  --el-button-text-color: var(--sf-main);
+  --el-button-hover-bg-color: var(--sf-soft);
+  --el-button-hover-border-color: var(--sf-main);
+  --el-button-hover-text-color: var(--sf-strong);
+}
+
+/* 强制颜色/高对比度模式下保留品牌配色（否则系统会把按钮强制成灰色） */
+:root { forced-color-adjust: none; }
+
+/* ===== 铁壳主按钮：显式颜色 + 防一切覆盖 ===== */
+.pb-btn-primary,
+.pb-btn-primary.el-button--primary {
+  forced-color-adjust: none !important;
+  background-color: var(--sf-main) !important;
+  border-color: var(--sf-main) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+.pb-btn-primary:hover,
+.pb-btn-primary.el-button--primary:hover {
+  background-color: var(--sf-light) !important;
+  border-color: var(--sf-light) !important;
+}
+.pb-btn-primary:active,
+.pb-btn-primary.el-button--primary:active {
+  background-color: var(--sf-strong) !important;
+  border-color: var(--sf-strong) !important;
+}
+.pb-btn-primary.is-disabled,
+.pb-btn-primary:disabled,
+.pb-btn-primary.el-button--primary.is-disabled {
+  background-color: var(--sf-light) !important;
+  border-color: var(--sf-light) !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
