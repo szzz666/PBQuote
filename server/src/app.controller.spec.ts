@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthService } from './auth.service';
+import { InstallService } from './install.service';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -9,7 +10,7 @@ describe('AppController', () => {
   beforeEach(async () => {
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService, { provide: AuthService, useValue: {} }],
+      providers: [AppService, { provide: AuthService, useValue: {} }, { provide: InstallService, useValue: { getStatus: async () => ({ installed: true }) } }],
     }).compile();
 
     appController = app.get<AppController>(AppController);

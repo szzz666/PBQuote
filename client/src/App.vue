@@ -36,6 +36,20 @@ const applyTheme = () => {
   for (const [k, v] of Object.entries(themeEpVars(t))) el.style.setProperty(k, v)
 }
 watch([() => config.value.storefrontTheme, onStorefrontRoute], applyTheme, { immediate: true })
+
+// 安装向导：未安装时自动跳转 /install
+const installChecked = ref(false)
+const installNeeded = ref(false)
+watch(onStorefrontRoute, async (on) => {
+  if (installChecked.value || !on) return
+  try {
+    const res = await fetch('/api/v1/install/status')
+    const data = await res.json()
+    installNeeded.value = !data.installed
+    if (!data.installed) router.push('/install')
+  } catch { /* 服务不可达时不跳转 */ }
+  installChecked.value = true
+}, { immediate: true })
 const brandLogo = computed(() => { const url = config.value.merchant.logoUrl || ''; if (!url) return ''; if (url.startsWith('/uploads/')) return new URL(url, configStore.apiBase).toString(); return url })
 const brandSubtitle = computed(() => config.value.merchant.brandSubtitle || '')
 const address = computed(() => window.location.origin + '/shop/' + config.value.merchant.slug)

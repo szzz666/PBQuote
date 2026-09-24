@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get,
 import { randomBytes, scryptSync } from 'node:crypto';
 import { AuthService } from './auth.service';
 import { AppService } from './app.service';
+import { InstallService } from './install.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ASSET_MAX_BYTES, LOGO_MAX_BYTES, MerchantLogoGuard } from './merchant-logo';
 import { boxShapeCatalog } from './box-shapes';
@@ -9,7 +10,7 @@ import type { LogoFile } from './merchant-logo';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService, @Optional() private readonly authService?: AuthService) {}
+  constructor(private readonly appService: AppService, private readonly installService: InstallService, @Optional() private readonly authService?: AuthService) {}
   private async identity(authorization?: string) {
     return this.authService?.me(authorization?.replace(/^Bearer\s+/i, ''));
   }
@@ -18,6 +19,11 @@ export class AppController {
   @Get('auth/me') async me(@Headers('authorization') authorization?: string) { return this.authService ? await this.authService.me(authorization?.replace(/^Bearer\s+/i, '')) : undefined; }
   @Post('auth/logout') async logout(@Headers('authorization') authorization?: string) { return this.authService ? await this.authService.logout(authorization?.replace(/^Bearer\s+/i, '')) : { revoked: false }; }
   @Get('health') health() { return this.appService.health(); }
+  @Get('install/status') async installStatus() { return this.installService.getStatus(); }
+  @Post('install') async install(@Body() body: any) {
+    try { return await this.installService.install(body); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '安装失败'); }
+  }
   @Get('box-shapes') boxShapes() { return boxShapeCatalog(); }
   @Post('merchant/:slug/logo')
   @UseGuards(MerchantLogoGuard)

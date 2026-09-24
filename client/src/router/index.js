@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import StorefrontView from '../views/StorefrontView.vue'
+import InstallView from '../views/InstallView.vue'
 import AdminView from '../views/AdminView.vue'
 import DemoIndexView from '../views/demo/DemoIndexView.vue'
 import PlanAView from '../views/demo/PlanAView.vue'
@@ -15,6 +16,7 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', redirect: '/shop/default' },
+    { path: '/install', name: 'install', component: InstallView },
     { path: '/shop', name: 'storefront-default', component: StorefrontView },
     { path: '/shop/:slug', name: 'storefront', component: StorefrontView },
     { path: '/admin', name: 'admin', component: AdminView },

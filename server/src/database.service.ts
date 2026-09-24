@@ -197,6 +197,24 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return rows[0]?.v ?? 1;
   }
 
+  /** 安装向导获取连接池执行 DDL/DML */
+  getPool() { return this.pool; }
+
+  /** users 表是否有数据（安装向导判断依据） */
+  async hasUsers() {
+    if (!this.pool) return false;
+    try {
+      const [rows] = await this.pool.query<any[]>('SELECT COUNT(*) AS n FROM users');
+      return Number(rows[0]?.n ?? 0) > 0;
+    } catch { return false; }
+  }
+
+  /** 安装向导完成后重连数据库（用新的 .env 配置） */
+  async reconnect() {
+    if (this.pool) { await this.pool.end().catch(() => {}); this.pool = undefined; }
+    await this.onModuleInit();
+  }
+
   async saveQuote(slug: string, input: unknown, price: unknown, version: number) {
     if (!this.pool) return;
     const merchantId = await this.merchantId(slug);
