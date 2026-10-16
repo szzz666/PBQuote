@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from './database.service';
+import { generatePassword, hashPassword } from './auth.service';
 import { computeUnfolded, findBoxShape } from './box-shapes';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { logoExtension, assetExtension, UPLOADS_ROOT } from './merchant-logo';
 import type { LogoFile } from './merchant-logo';
@@ -38,8 +40,8 @@ const defaultTiers: Tier[] = [
   { quantity: 10000, unitPricePerM2: 3.9, minimumCharge: 3700 },
 ];
 const defaultMaterialNames = ['350克白卡'];
-const defaultTreatmentNames = ['哑胶', '光胶', '逆向 UV'];
-const defaultProcessNames = ['烫金', '烫银', '击凸', '丝印UV', '贴窗口'];
+const defaultTreatmentNames = ['光胶', '哑胶', '不过胶'];
+const defaultProcessNames = ['击凸', '击凹', '烫金', '烫银', '丝印UV', '贴窗口'];
 const money = (n: number) => Number(n.toFixed(2));
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 /** 安全链接：http/https，或 / 开头的站内路径（含 /uploads/）。拒绝 javascript:/data://// 等 */
@@ -53,9 +55,9 @@ const CANVAS_W = 1200; // 推荐内容区设计稿宽度（px），前端按容�
 const REGION_W = { top: CANVAS_W, bottom: CANVAS_W, left: 260, right: 260 } as Record<string, number>;
 
 const defaultPrintRequirements: PrintRequirement[] = [
-  { name: '正常', rate: 0 },
-  { name: '跟色', rate: 0.08 },
-  { name: '打样', rate: 0.1 },
+  { name: '电脑色正常4色印', rate: 0 },
+  { name: '有样板跟色', rate: 0 },
+  { name: '通知客户看色', rate: 0 },
 ];
 
 const defaultPricing: Pricing = {
@@ -65,15 +67,15 @@ const defaultPricing: Pricing = {
   processes: Object.fromEntries(defaultProcessNames.map(n => [n, { billingMode: 'area', setupFee: 150, unitPrice: 0.1 }])),
   print: { doubleSidedSurcharge: 0.6 },
   requirements: { list: clone(defaultPrintRequirements) },
-  glue: { unitPricePerPiece: 0.05 },
-  spotColor: { plateFeePerColor: 150 },
+  glue: { unitPricePerPiece: 0 },
+  spotColor: { plateFeePerColor: 300 },
 };
 
 const seed: any = {
   merchant: { name: process.env.MERCHANT_NAME || '示例商户', slug: process.env.MERCHANT_SLUG || 'default', slogan: '专业包装 · 智能报价' },
   product: { name: '卡纸盒 · 双插盒', boxType: '双插盒' },
   pricing: defaultPricing,
-  shipping: { freeThreshold: 1000, fee: 18 },
+  shipping: { freeThreshold: 0, fee: 0 },
   contact: {},
   contactEntries: [],
   topbarLinks: [],
@@ -88,6 +90,120 @@ const seed: any = {
 
   health() { return { status: 'ok', service: 'pbquote-api', database: this.database?.configured ? 'mysql' : 'mysql-pending' } }
   async listMerchants() { return this.database?.listMerchants() ?? [] }
+
+  /** 以 slug 为 key 的缓存刷新（改标识后立刻生效，无需重启） */
+  private refreshSlugCache(oldSlug: string, newSlug: string, config?: any) {
+    if (oldSlug === newSlug) return;
+    if (config !== undefined) this.configs.set(newSlug, config);
+    else this.configs.delete(newSlug);
+    this.configs.delete(oldSlug);
+  }
+
+  /**
+   * 商户账号管理（超级管理员）：改专属标识 slug / 登录账号 username。
+   * 改 slug：预检图片目录 → 一个事务内改 merchants.slug 并替换 merchant_configs.payload 里的
+   * /uploads/merchants/<旧>/ 子串 → 提交后迁移图片目录；迁移失败补偿回滚数据库并抛错。
+   */
+  async updateMerchantAccount(id: string, patch: { slug?: string; username?: string }, actorUserId?: string) {
+    if (!this.database?.configured) throw new BadRequestException('MySQL 未连接，无法修改商户账号');
+    const current = await this.database.findMerchantAccount(id);
+    if (!current) throw new NotFoundException('商户不存在');
+    if (!current.userId) throw new BadRequestException('该商户没有可管理的登录账号');
+    if (patch.slug === undefined && patch.username === undefined) throw new BadRequestException('请提供要修改的专属标识或登录账号');
+
+    let slug: string | undefined;
+    if (patch.slug !== undefined) {
+      const value = String(patch.slug).trim();
+      if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(value)) throw new BadRequestException('专属标识只能用小写字母、数字和连字符，且以字母或数字开头');
+      if (value !== current.slug) {
+        if (await this.database.isSlugTaken(value, id)) throw new BadRequestException('该专属标识已被占用');
+        slug = value;
+      }
+    }
+    let username: string | undefined;
+    if (patch.username !== undefined) {
+      const value = String(patch.username).trim();
+      if (value.length < 3 || value.length > 120 || !/^[A-Za-z0-9_.@-]{3,120}$/.test(value)) throw new BadRequestException('登录账号需 3-120 位，只能用字母、数字、_ . @ -');
+      if (value !== current.username) {
+        if (await this.database.isUsernameTaken(value, current.userId)) throw new BadRequestException('该登录账号已被占用');
+        username = value;
+      }
+    }
+    if (slug === undefined && username === undefined) {
+      return { ok: true, id, name: current.name, slug: current.slug, username: current.username, uploadsMigrated: false };
+    }
+
+    const oldSlug = current.slug;
+    // 动手前预检：目标图片目录已存在则任何改动都不做
+    if (slug !== undefined) {
+      const target = join(UPLOADS_ROOT, 'merchants', slug);
+      if (existsSync(target)) throw new BadRequestException('新标识对应的图片目录已存在，请先处理');
+    }
+
+    try {
+      await this.database.updateMerchantAccount({ id, slug: slug ?? current.slug, username, userId: current.userId, oldSlug });
+    } catch (error: any) {
+      if (error?.code === 'ER_DUP_ENTRY' || error?.errno === 1062) {
+        throw new BadRequestException(String(error?.message ?? '').includes('username') || String(error?.message ?? '').includes('users') ? '该登录账号已被占用' : '该专属标识已被占用');
+      }
+      throw error;
+    }
+
+    let uploadsMigrated = false;
+    if (slug !== undefined) {
+      // 数据库已提交，此处开始文件迁移；出现任何异常都要补偿回滚数据库，绝不留半迁移状态
+      try {
+        const from = join(UPLOADS_ROOT, 'merchants', oldSlug);
+        const to = join(UPLOADS_ROOT, 'merchants', slug);
+        if (existsSync(from)) {
+          if (existsSync(to)) throw new Error('图片目录冲突');
+          renameSync(from, to);
+          uploadsMigrated = true;
+        }
+      } catch {
+        await this.rollbackAccountMigration(id, oldSlug, slug, current.username, current.userId);
+        throw new Error('迁移失败，已回滚');
+      }
+    }
+    this.refreshSlugCache(oldSlug, slug ?? oldSlug);
+    // 缓存刷新失败不能影响已提交的结果：下次读取会回源数据库
+    try { await this.refreshMerchantCache(oldSlug, slug ?? oldSlug); } catch { /* 忽略缓存刷新异常 */ }
+    await this.database.audit({ actorUserId: actorUserId ?? null, merchantId: id, action: 'merchant.account.update', resourceType: 'merchant', resourceId: id, payload: { before: { slug: oldSlug, username: current.username }, after: { slug: slug ?? oldSlug, username: username ?? current.username } } });
+    return { ok: true, id, name: current.name, slug: slug ?? oldSlug, username: username ?? current.username, uploadsMigrated };
+  }
+
+  /**
+   * 商户账号管理（超级管理员）：重置商户登录密码。
+   * 明文密码仅在本响应里返回一次，不落库；入参为空则生成 12 位随机密码。
+   */
+  async accountPassword(id: string, password?: string, actorUserId?: string) {
+    if (!this.database?.configured) throw new BadRequestException('MySQL 未连接，无法重置商户密码');
+    const current = await this.database.findMerchantAccount(id);
+    if (!current) throw new NotFoundException('商户不存在');
+    if (!current.userId || !current.username) throw new BadRequestException('该商户没有可管理的登录账号');
+    const raw = String(password ?? '').trim();
+    if (raw && raw.length < 6) throw new BadRequestException('密码至少 6 位');
+    const plain = raw || generatePassword(12);
+    await this.database.updatePassword(current.userId, await hashPassword(plain));
+    await this.database.revokeUserSessions(current.userId);
+    await this.database.audit({ actorUserId: actorUserId ?? null, merchantId: id, action: 'user.password.reset', resourceType: 'user', resourceId: current.userId, payload: { username: current.username } });
+    return { ok: true, username: current.username, password: plain, userId: current.userId };
+  }
+
+  /** 文件迁移失败后的数据库补偿：slug 与 payload 一并换回 */
+  private async rollbackAccountMigration(id: string, oldSlug: string, newSlug: string, username: string | undefined, userId: string) {
+    try {
+      await this.database?.updateMerchantAccount({ id, slug: oldSlug, username, userId, oldSlug: newSlug });
+    } catch { /* 回滚失败不覆盖原始错误 */ }
+    this.refreshSlugCache(newSlug, oldSlug);
+    try { await this.refreshMerchantCache(newSlug, oldSlug); } catch { /* 忽略缓存刷新异常 */ }
+  }
+
+  /** 刷新数据库侧以 slug 为 key 的商户 id 缓存，避免改动后仍命中旧标识 */
+  private async refreshMerchantCache(oldSlug: string, newSlug: string) {
+    this.database?.renameSlugCache(oldSlug, newSlug);
+    await this.database?.merchantId(newSlug);
+  }
 
   async uploadLogo(slug: string, file?: LogoFile) {
     if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) throw new BadRequestException('商家标识无效');
@@ -190,15 +306,16 @@ const seed: any = {
       processes,
       print: { doubleSidedSurcharge: Number(p.print?.doubleSidedSurcharge ?? 0.6) },
       requirements: { list: this.migratePrintRequirements(p.requirements) },
-      glue: { unitPricePerPiece: Number(p.glue?.unitPricePerPiece ?? 0.05) },
-      spotColor: { plateFeePerColor: Number(p.spotColor?.plateFeePerColor ?? 150) },
+      glue: { unitPricePerPiece: Number(p.glue?.unitPricePerPiece ?? 0) },
+      spotColor: { plateFeePerColor: Number(p.spotColor?.plateFeePerColor ?? 300) },
     };
   }
 
   private migratePrintRequirements(req?: any): PrintRequirement[] {
-    if (Array.isArray(req?.list) && req.list.length) return req.list.map((x: any) => ({ name: String(x?.name ?? '').trim() || '正常', rate: Number(x?.rate ?? 0) }));
+    if (Array.isArray(req?.list) && req.list.length) return req.list.map((x: any) => ({ name: String(x?.name ?? '').trim() || defaultPrintRequirements[0].name, rate: Number(x?.rate ?? 0) }));
     const oldFollow = req?.followColorSurchargeRate;
-    return clone(defaultPrintRequirements).map((r) => (r.name === '跟色' && oldFollow !== undefined ? { ...r, rate: Number(oldFollow) } : r));
+    // 旧结构只有一个全局「跟色加收系数」，对应印刷要求列表的第 2 项（原「跟色」槽位）
+    return clone(defaultPrintRequirements).map((r, i) => (i === 1 && oldFollow !== undefined ? { ...r, rate: Number(oldFollow) } : r));
   }
 
   private validatePricing(p: Pricing) {
@@ -429,7 +546,19 @@ const seed: any = {
   async listOrders(slug: string, status?: string) { return await this.database?.listOrders(slug, status) ?? [...this.orders.values()] }
   async createMerchant(input: any) { const c = await this.database?.createMerchant(input); if (!c) throw new Error('MySQL 未连接，无法创建商家'); return c }
   async updateMerchantStatus(id: string, status: any) { return await this.database?.updateMerchantStatus(id, status) }
-  async deleteMerchant(id: string) { const r = await this.database?.deleteMerchant(id); if (!r) throw new Error('商户不存在或已删除'); return r }
+  async deleteMerchant(id: string) {
+    const before = await this.database?.findMerchantAccount(id);
+    const r: any = await this.database?.deleteMerchant(id);
+    if (!r) throw new Error('商户不存在或已删除');
+    const slug = (r.slug || before?.slug) as string | undefined;
+    if (slug) {
+      this.configs.delete(slug);
+      this.database?.forgetMerchantId(slug);
+      // 图片目录随商户一起删除（best-effort：失败不影响删除结果）
+      try { await rm(join(UPLOADS_ROOT, 'merchants', slug), { recursive: true, force: true }) } catch { /* 目录可能不存在 */ }
+    }
+    return { id, slug, deleted: true };
+  }
   async createOption(s: string, i: any) { return await this.database?.createOption(s, i) }
   async updateOption(s: string, id: string, i: any) { return await this.database?.updateOption(s, id, i) }
   async createProduct(s: string, i: any) { return await this.database?.createProduct(s, i) }

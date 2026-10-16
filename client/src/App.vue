@@ -6,7 +6,9 @@ import { useAuthStore } from './stores/auth'
 import { useStorefrontEditor } from './composables/useStorefrontEditor'
 import { themeById, themeEpVars } from './config/themes'
 import { useConfigStore } from './stores/config'
+import { resolveAssetUrl } from './utils/url'
 import TopbarA from './components/topbars/TopbarA.vue'
+import { http } from './api/client'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,7 +52,7 @@ watch(onStorefrontRoute, async (on) => {
   } catch { /* 服务不可达时不跳转 */ }
   installChecked.value = true
 }, { immediate: true })
-const brandLogo = computed(() => { const url = config.value.merchant.logoUrl || ''; if (!url) return ''; if (url.startsWith('/uploads/')) return new URL(url, configStore.apiBase).toString(); return url })
+const brandLogo = computed(() => resolveAssetUrl(config.value.merchant.logoUrl || '', configStore.apiBase))
 const brandSubtitle = computed(() => config.value.merchant.brandSubtitle || '')
 const address = computed(() => window.location.origin + '/shop/' + config.value.merchant.slug)
 
@@ -73,6 +75,38 @@ function copyAddress() { navigator.clipboard?.writeText(address.value); ElMessag
 watch(loginModalVisible, (open) => { if (!open) apiError.value = '' })
 // 保险：已登录时强制关闭登录弹窗，防止 42% 深色遮罩残留盖住页面
 watch(authenticated, (ok) => { if (ok) auth.loginModalVisible = false }, { immediate: true })
+
+// 修改密码（超级管理员与商户账号通用）
+const passwordVisible = ref(false)
+const passwordBusy = ref(false)
+const passwordError = ref('')
+const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
+function openPasswordDialog() {
+  Object.assign(passwordForm, { currentPassword: '', newPassword: '', confirmPassword: '' })
+  passwordError.value = ''
+  auth.loginModalVisible = false
+  passwordVisible.value = true
+}
+async function submitPassword() {
+  if (passwordBusy.value) return
+  passwordError.value = ''
+  const current = passwordForm.currentPassword
+  const next = passwordForm.newPassword
+  if (!current) { passwordError.value = '请输入原密码'; return }
+  if (String(next || '').length < 6) { passwordError.value = '新密码至少 6 位'; return }
+  if (next !== passwordForm.confirmPassword) { passwordError.value = '两次输入的新密码不一致'; return }
+  passwordBusy.value = true
+  const landing = '/shop/' + (user.value?.merchantSlug || 'default')
+  try {
+    await http.post('/auth/password', { currentPassword: current, newPassword: next })
+    passwordVisible.value = false
+    Object.assign(passwordForm, { currentPassword: '', newPassword: '', confirmPassword: '' })
+    auth.reset()
+    ElMessage.success('密码已修改，请用新密码重新登录')
+    if (!route.path.startsWith('/shop') && !route.path.startsWith('/install')) router.push(landing)
+    auth.requireLogin()
+  } catch (e) { passwordError.value = e.message } finally { passwordBusy.value = false }
+}
 </script>
 
 <template>
@@ -93,6 +127,7 @@ watch(authenticated, (ok) => { if (ok) auth.loginModalVisible = false }, { immed
     @go-admin="router.push('/admin')"
     @go-nav="router.push($event)"
     @go-edit="storefrontEditor.enterEdit()"
+    @change-password="openPasswordDialog"
   />
     <router-view />
     <div v-if="loginModalVisible" class="modal-backdrop" @click.self="auth.loginModalVisible = false">
@@ -107,5 +142,25 @@ watch(authenticated, (ok) => { if (ok) auth.loginModalVisible = false }, { immed
         <el-button class="pb-btn-primary primary-action" type="primary" :loading="loginBusy" native-type="submit">{{ loginBusy ? '登录中…' : '登录' }}</el-button>
       </form>
     </div>
+
+    <el-dialog v-model="passwordVisible" title="修改密码" width="440px" :close-on-click-modal="false" append-to-body>
+      <el-form label-width="96px" @submit.prevent>
+        <el-form-item label="原密码">
+          <el-input v-model="passwordForm.currentPassword" type="password" show-password autocomplete="current-password" placeholder="请输入原密码" />
+        </el-form-item>
+        <el-form-item label="新密码">
+          <el-input v-model="passwordForm.newPassword" type="password" show-password autocomplete="new-password" placeholder="至少 6 位" />
+        </el-form-item>
+        <el-form-item label="确认新密码">
+          <el-input v-model="passwordForm.confirmPassword" type="password" show-password autocomplete="new-password" placeholder="再次输入新密码" @keyup.enter="submitPassword" />
+        </el-form-item>
+      </el-form>
+      <el-alert v-if="passwordError" :title="passwordError" type="error" show-icon :closable="false" style="margin-bottom:10px" />
+      <p style="margin:0;color:#909399;font-size:12px">修改成功后当前登录会立即失效，需要用新密码重新登录。</p>
+      <template #footer>
+        <el-button :disabled="passwordBusy" @click="passwordVisible = false">取消</el-button>
+        <el-button type="primary" :loading="passwordBusy" @click="submitPassword">确认修改</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>

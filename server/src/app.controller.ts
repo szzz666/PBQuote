@@ -59,6 +59,26 @@ export class AppController {
     if (identity.role !== 'super_admin') throw new ForbiddenException('仅超级管理员可删除商户');
     try { return await this.appService.deleteMerchant(id); } catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '删除商户失败'); }
   }
+  @Patch('admin/merchants/:id/account') async updateMerchantAccount(@Param('id') id: string, @Body() body: { slug?: string; username?: string }, @Headers('authorization') authorization?: string) {
+    const identity = await this.identity(authorization);
+    if (!identity) throw new UnauthorizedException('修改商户账号需要登录');
+    if (identity.role !== 'super_admin') throw new ForbiddenException('仅超级管理员可修改商户账号');
+    return this.appService.updateMerchantAccount(id, body ?? {}, identity.id);
+  }
+  @Post('admin/merchants/:id/password') async resetMerchantPassword(@Param('id') id: string, @Body() body: { password?: string }, @Headers('authorization') authorization?: string) {
+    const identity = await this.identity(authorization);
+    if (!identity) throw new UnauthorizedException('重置商户密码需要登录');
+    if (identity.role !== 'super_admin') throw new ForbiddenException('仅超级管理员可重置商户密码');
+    const result = await this.appService.accountPassword(id, body?.password ?? undefined, identity.id);
+    // 改密后强制该商户重新登录：同时清掉内存会话，避免旧 token 仍能通过鉴权
+    this.authService?.revokeSessions({ id: result.userId, username: result.username });
+    return { ok: result.ok, username: result.username, password: result.password };
+  }
+  @Post('auth/password') async changePassword(@Body() body: { currentPassword?: string; newPassword?: string }, @Headers('authorization') authorization?: string) {
+    const identity = await this.identity(authorization);
+    if (!identity) throw new UnauthorizedException('修改密码需要登录');
+    return this.authService!.changePassword(identity.username, String(body?.currentPassword ?? ''), String(body?.newPassword ?? ''));
+  }
   @Patch('admin/merchants/:id/status') async updateMerchantStatus(@Param('id') id: string, @Body() body: { status: 'active' | 'disabled' }, @Headers('authorization') authorization?: string) {
     const identity = await this.identity(authorization);
     if (!identity) throw new UnauthorizedException('修改商家状态需要登录');

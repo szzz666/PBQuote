@@ -6,7 +6,12 @@ describe('AppService', () => {
   const database = () => ({ configured: false, loadConfig: jest.fn().mockResolvedValue(null), saveQuote: jest.fn().mockResolvedValue(undefined) });
 
   it('calculates unfolded size from built-in formula and itemized charges', async () => {
-    const service = new AppService(database() as any);
+    const db = database();
+    db.loadConfigAdmin = jest.fn().mockResolvedValue(null);
+    db.saveConfig = jest.fn().mockResolvedValue(undefined);
+    const service = new AppService(db as any);
+    // 显式配置：与 xtay 默认值无关，专测计算逻辑
+    await service.updateConfig('default', { pricing: svcPricingBaseline() });
     const r = await service.quote('default', {
       quantity: 1000, shapeId: 'double-insert', finishedDimensions: dims, dimensionMode: 'auto',
       material: '350克白卡', treatment: '哑胶', glue: '粘', spotColors: 1, printMode: '单面印刷', printRequirement: '正常',
@@ -37,7 +42,11 @@ describe('AppService', () => {
   });
 
   it('applies double-sided surcharge, follow-color rate and proofing fee', async () => {
-    const service = new AppService(database() as any);
+    const db = database();
+    db.loadConfigAdmin = jest.fn().mockResolvedValue(null);
+    db.saveConfig = jest.fn().mockResolvedValue(undefined);
+    const service = new AppService(db as any);
+    await service.updateConfig('default', { pricing: svcPricingBaseline() });
     const dbl = await service.quote('default', { quantity: 800, shapeId: 'double-insert', finishedDimensions: dims, printMode: '双面印刷' });
     expect(dbl.baseProductionAmount).toBe(1003.97); // 627.48×1.6=1003.968 → 保留两位
     const follow = await service.quote('default', { quantity: 800, shapeId: 'double-insert', finishedDimensions: dims, printRequirement: '跟色' });
@@ -50,7 +59,11 @@ describe('AppService', () => {
   });
 
   it('supports process billing modes: graphic area override, times and piece', async () => {
-    const service = new AppService(database() as any);
+    const db0 = database();
+    db0.loadConfigAdmin = jest.fn().mockResolvedValue(null);
+    db0.saveConfig = jest.fn().mockResolvedValue(undefined);
+    const service = new AppService(db0 as any);
+    await service.updateConfig('default', { pricing: svcPricingBaseline() });
     const area = await service.quote('default', { quantity: 1000, shapeId: 'double-insert', finishedDimensions: dims, processes: [{ name: '烫金', graphicWidth: 100, graphicHeight: 50 }] });
     // 图形面积 0.005㎡：150 + 0.005×1000×0.1 = 150.5
     expect(area.processCharges[0].amount).toBe(150.5);
@@ -85,6 +98,9 @@ describe('AppService', () => {
     expect(cfg.pricing.materials).toHaveLength(2);
     expect(cfg.pricing.materials[0].quantityTiers[0]).toEqual({ quantity: 100, unitPricePerM2: 9, minimumCharge: 300 });
     expect(cfg.pricing.treatments['哑胶'].unitPricePerM2).toBe(0.2);
+    // 新默认识别「不过胶」，旧默认名「逆向 UV」已不在列表内
+    expect(Object.keys(cfg.pricing.treatments)).toContain('不过胶');
+    expect(cfg.pricing.requirements.list[0].name).toBe('电脑色正常4色印');
     const r = await service.quote('old', { quantity: 100, shapeId: 'double-insert', finishedDimensions: dims, processes: ['烫金'] });
     // 旧 quantity 计费模式迁移为按个
     expect(r.processCharges[0].billingMode).toBe('piece');
@@ -154,6 +170,27 @@ describe('AppService', () => {
     expect(keng.unfoldedDimensions).toEqual({ length: 420, width: 235 });
   });
 });
+
+/** 基准价格配置：与后端曾用的旧默认体系一致，供计算类断言使用 */
+function svcPricingBaseline() {
+  return {
+    quantityMode: 'custom',
+    materials: [{ name: '350克白卡', quantityTiers: [
+      { quantity: 500, unitPricePerM2: 8.4, minimumCharge: 580 },
+      { quantity: 1000, unitPricePerM2: 5.6, minimumCharge: 850 },
+      { quantity: 2000, unitPricePerM2: 5.1, minimumCharge: 1080 },
+      { quantity: 3000, unitPricePerM2: 4.6, minimumCharge: 1380 },
+      { quantity: 5000, unitPricePerM2: 4, minimumCharge: 1900 },
+      { quantity: 10000, unitPricePerM2: 3.9, minimumCharge: 3700 },
+    ] }],
+    treatments: { '哑胶': { unitPricePerM2: 0.2 }, '光胶': { unitPricePerM2: 0.2 } },
+    processes: { '烫金': { billingMode: 'area', setupFee: 150, unitPrice: 0.1 } },
+    print: { doubleSidedSurcharge: 0.6 },
+    requirements: { list: [{ name: '正常', rate: 0 }, { name: '跟色', rate: 0.08 }, { name: '打样', rate: 0.1 }] },
+    glue: { unitPricePerPiece: 0.05 },
+    spotColor: { plateFeePerColor: 150 },
+  };
+}
 
 function svcConfigWithTimes() {
   return {

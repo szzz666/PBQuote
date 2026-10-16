@@ -7,11 +7,12 @@ import ContactModal from '../../components/ContactModal.vue'
 import UnfoldDimsEditor from '../../components/UnfoldDimsEditor.vue'
 const route = useRoute()
 const isDemo = computed(() => route.path.startsWith('/demo'))
-const { GLUE_OPTIONS, PRINT_MODES, printRequirementOptions, apiError, baseProductionAmount, boxOptions, checkoutSummary, config, contact, contactOpen, contactEntries, copyMessage, copySummary, createOrder, displayed, form, glueCharge, materialOptions, orderState, processOptions, processTotal, qqUrl, qrUrl, quantityLocked, quantityTiers, selectBoxType, selectedBoxType, selectedShape, spotColorCharge, toggleProcess, treatmentCharge, treatmentOptions, unfoldAreaM2, unfolded } = useStorefrontQuote()
+const { GLUE_OPTIONS, PRINT_MODES, printRequirementOptions, apiError, baseProductionAmount, boxOptions, checkoutSummary, config, contact, contactOpen, contactEntries, copyMessage, copySummary, createOrder, displayed, form, glueCharge, materialOptions, orderState, processOptions, processTotal, qqUrl, qrUrl, quantityLocked, quantityTiers, selectBoxType, selectedBoxType, selectedShape, spotColorCharge, toggleProcess, treatmentCharge, treatmentOptions, unfoldAreaM2, unfolded, boxVariantMissing } = useStorefrontQuote()
 const isAutoDims = computed(() => !!selectedShape.value?.formulaText && form.unfoldMode !== 'manual')
 const step = ref(1)
 const steps = ['选盒型', '填尺寸', '材料与工艺', '下单']
 function next() {
+  if (step.value === 1 && boxVariantMissing.value) { apiError.value = '请先选择右上角盒型结构（卡盒 / 坑盒）'; return }
   if (step.value === 2 && (form.length <= 0 || form.width <= 0 || form.height <= 0)) { apiError.value = '请先填写成品尺寸'; return }
   if (step.value < 4) step.value++
 }
@@ -35,6 +36,7 @@ function prev() { if (step.value > 1) step.value-- }
     <main class="c-main">
       <section v-if="step === 1" class="c-card">
         <div class="c-boxhead"><h2>选择盒型</h2><div class="c-var"><button :class="{ on: form.boxVariant === 'ka' }" @click="form.boxVariant = 'ka'">卡盒</button><button :class="{ on: form.boxVariant === 'keng' }" @click="form.boxVariant = 'keng'">坑盒</button></div></div>
+        <p v-if="boxVariantMissing" class="c-hint">请先选择右上角盒型结构（卡盒 / 坑盒）</p>
         <p class="c-sub">先选结构，尺寸会自动换算展开面积。</p>
         <div class="c-boxes">
           <button v-for="item in boxOptions" :key="item.name" class="c-box" :class="{ on: config.product.boxType === item.name }" @click="selectBoxType(item.name)">
@@ -104,7 +106,7 @@ function prev() { if (step.value > 1) step.value-- }
           <div v-if="spotColorCharge > 0"><span>专色</span><b>￥{{ spotColorCharge.toFixed(2) }}</b></div>
           <div><span>工艺费用</span><b>￥{{ processTotal.toFixed(2) }}</b></div>
         </div>
-        <div class="c-total"><span>总计</span><strong>￥{{ displayed.total.toFixed(2) }}</strong></div>
+        <div class="c-total"><span>总计</span><strong v-if="boxVariantMissing">请先选择盒型</strong><strong v-else>￥{{ displayed.total.toFixed(2) }}</strong></div>
       </section>
 
       <p v-if="apiError" class="c-err">{{ apiError }}</p>
@@ -114,7 +116,7 @@ function prev() { if (step.value > 1) step.value-- }
       <el-button :disabled="step === 1" @click="prev()">‹ 上一步</el-button>
       <span class="c-progress">{{ step }} / 4</span>
       <el-button v-if="step < 4" type="primary" @click="next()">下一步 ›</el-button>
-      <el-button v-else type="primary" size="large" :loading="orderState === 'loading'" @click="createOrder">{{ orderState === 'success' ? '报价已复制' : '立即下单 ↗' }}</el-button>
+      <el-button v-else type="primary" size="large" :disabled="boxVariantMissing" :loading="orderState === 'loading'" @click="createOrder">{{ orderState === 'success' ? '报价已复制' : '立即下单 ↗' }}</el-button>
     </footer>
 
     <ContactModal :open="contactOpen" :entries="contactEntries" :checkout-summary="checkoutSummary" :copy-message="copyMessage" @close="contactOpen = false" @copy="copySummary" />
@@ -184,4 +186,6 @@ function prev() { if (step.value > 1) step.value-- }
 .c-var button { border: none; background: #fff; color: #5b6570; padding: 3px 10px; font-size: 12px; cursor: pointer; }
 .c-var button + button { border-left: 1px solid #dce6d9; }
 .c-var button.on { background: var(--sf-main); color: #fff; }
+.c-hint { margin: 8px 0 0; font-size: 12px; color: #d97706; }
+.c-hint-err { color: #d93025; }
 </style>

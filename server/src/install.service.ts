@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { createConnection } from 'mysql2/promise';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { randomBytes, scrypt as scryptCb } from 'node:crypto';
 import { join } from 'node:path';
 import { DatabaseService } from './database.service';
@@ -44,7 +44,7 @@ export class InstallService {
     // 1) 校验输入
     const dbHost = String(dto.dbHost || '').trim();
     const dbPort = Number(dto.dbPort || 3306);
-    const dbName = String(dto.dbName || '').trim().replace(/[^w]/g, '');
+    const dbName = String(dto.dbName || '').trim().replace(/[^\\w]/g, '');
     const dbUser = String(dto.dbUser || '').trim();
     const dbPassword = String(dto.dbPassword || '');
     const adminUsername = String(dto.adminUsername || '').trim();
@@ -66,13 +66,18 @@ export class InstallService {
 
     // 3) 连接目标库，执行建表
     const conn = await createConnection({ host: dbHost, port: dbPort, user: dbUser, password: dbPassword, database: dbName, multipleStatements: true });
-    const migrationSql = await readFile(join(process.cwd(), 'database', 'migrations', '001_initial.sql'), 'utf8');
-    await conn.query(migrationSql);
-    try {
-      const sql2 = await readFile(join(process.cwd(), 'database', 'migrations', '002_soft_delete_merchants.sql'), 'utf8');
-      await conn.query(sql2);
-    } catch (e: any) {
-      if (!String(e?.message || '').includes('Duplicate column')) throw e;
+    // 按文件名顺序执行全部迁移（含表/字段中文注释），幂等可重复执行
+    const migrationDir = join(process.cwd(), 'database', 'migrations');
+    const migrationFiles = (await readdir(migrationDir)).filter((f) => /^\d+.*\.sql$/i.test(f)).sort();
+    for (const file of migrationFiles) {
+      const migrationSql = await readFile(join(migrationDir, file), 'utf8');
+      try {
+        await conn.query(migrationSql);
+      } catch (e: any) {
+        const msg = String(e?.message || '');
+        if (/Duplicate column|Duplicate key name|already exists|Unknown table/i.test(msg)) continue;
+        throw e;
+      }
     }
     await conn.end();
 
@@ -128,8 +133,8 @@ export class InstallService {
     const conn = this.database.getPool();
     if (!conn) return;
     await conn.query(
-      "INSERT INTO users (id, username, password_hash, role, merchant_id, status) VALUES (REPLACE(UUID(),'-',''), ?, ?, 'super_admin', NULL, 'active') ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), status = 'active'",
-      [username, passwordHash],
+      "INSERT INTO users (id, username, password_hash, role, merchant_id, status) VALUES (?, ?, ?, 'super_admin', NULL, 'active') ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), status = 'active'",
+      [randomBytes(13).toString('hex'), username, passwordHash],
     );
   }
 
@@ -145,8 +150,8 @@ export class InstallService {
     const mid = (rows as any[])[0]?.id;
     if (!mid) return;
     await conn.query(
-      "INSERT INTO merchant_configs (id, merchant_id, version, status, payload) SELECT REPLACE(UUID(),'-',''), ?, 1, 'published', ? FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM merchant_configs WHERE merchant_id = ? AND status = 'published')",
-      [mid, JSON.stringify({ merchant: { name, slug, slogan: '专业包装 · 智能报价' }, product: { name: '卡纸盒 · 双插盒', boxType: '双插盒' }, shipping: { freeThreshold: 1000, fee: 18 }, contact: {}, contactEntries: [], topbarLinks: [], contentBlocks: [], storefrontLayout: 'b', storefrontTheme: 'green' }), mid],
+      "INSERT INTO merchant_configs (id, merchant_id, version, status, payload) SELECT ?, ?, 1, 'published', ? FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM merchant_configs WHERE merchant_id = ? AND status = 'published')",
+      [randomBytes(13).toString('hex'), mid, JSON.stringify({ merchant: { name, slug, slogan: '专业包装 · 智能报价' }, product: { name: '卡纸盒 · 双插盒', boxType: '双插盒' }, shipping: { freeThreshold: 0, fee: 0 }, contact: {}, contactEntries: [], topbarLinks: [], contentBlocks: [], storefrontLayout: 'b', storefrontTheme: 'green' }), mid],
     );
     // 商家账号（如与管理员同名则跳过）
     const merchantUsername = slug;
@@ -154,8 +159,8 @@ export class InstallService {
     const hash = await scryptAsync('change-me', salt, 64);
     const passwordHash = salt + '$' + hash.toString('hex');
     await conn.query(
-      "INSERT INTO users (id, username, password_hash, role, merchant_id, status) VALUES (REPLACE(UUID(),'-',''), ?, ?, 'merchant', ?, 'active') ON DUPLICATE KEY UPDATE status = 'active'",
-      [merchantUsername, passwordHash, mid],
+      "INSERT INTO users (id, username, password_hash, role, merchant_id, status) VALUES (?, ?, ?, 'merchant', ?, 'active') ON DUPLICATE KEY UPDATE status = 'active'",
+      [randomBytes(13).toString('hex'), merchantUsername, passwordHash, mid],
     );
   }
 }

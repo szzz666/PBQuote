@@ -7,6 +7,7 @@ import { useAuthStore } from '../stores/auth'
 import { useConfigStore } from '../stores/config'
 import { boxTypeAssets } from '../config/merchant-assets'
 import { boxShapes, computeUnfolded, findBoxShape, CUSTOM_SHAPE } from '../lib/box-shapes'
+import { resolveAssetUrl } from '../utils/url'
 
 /** 前台报价的全部逻辑：盒形/尺寸/材质/工艺/价格/下单/联系。供多种排版复用。 */
 export function useStorefrontQuote() {
@@ -27,14 +28,14 @@ export function useStorefrontQuote() {
 
   const routeSlug = computed(() => route.params.slug || user.value?.merchantSlug || config.value.merchant.slug || 'default')
 
-const form = reactive({ length: 120, width: 80, height: 35, thickness: 1.5, cover: 15, unfoldMode: 'auto', unfoldLength: 0, unfoldWidth: 0, quantity: 500, material: '', treatment: '', printMode: '单面印刷', printRequirement: '正常', glue: '不粘', spotColors: 0, processes: [], boxVariant: 'ka' })
+const form = reactive({ length: 120, width: 80, height: 35, thickness: 1.5, cover: 15, unfoldMode: 'auto', unfoldLength: 0, unfoldWidth: 0, quantity: 500, material: '', treatment: '', printMode: '单面印刷', printRequirement: '', glue: '不粘', spotColors: 0, processes: [], boxVariant: '' })
 const BOX_VARIANTS = [{ id: 'ka', label: '卡盒' }, { id: 'keng', label: '坑盒' }]
 const PRINT_MODES = ['单面印刷', '双面印刷']
 const GLUE_OPTIONS = ['不粘', '粘']
 const printRequirementOptions = computed(() => (config.value.pricing.requirements?.list ?? []).map((r) => r.name))
-const selectedRequirement = computed(() => (config.value.pricing.requirements?.list ?? []).find((r) => r.name === form.printRequirement) ?? { name: '正常', rate: 0 })
+const selectedRequirement = computed(() => { const list = config.value.pricing.requirements?.list ?? []; return list.find((r) => r.name === form.printRequirement) ?? list[0] ?? { name: '', rate: 0 } })
 
-const brandLogo = computed(() => { const url = config.value.merchant.logoUrl || ''; if (!url) return ''; if (url.startsWith('/uploads/')) return new URL(url, configStore.apiBase).toString(); return url })
+const brandLogo = computed(() => resolveAssetUrl(config.value.merchant.logoUrl || '', configStore.apiBase))
 const brandSubtitle = computed(() => config.value.merchant.brandSubtitle || '')
 
 const shapeCatalog = computed(() => [...boxShapes, CUSTOM_SHAPE])
@@ -42,11 +43,17 @@ const selectedShape = computed(() => findBoxShape(config.value.product.boxType) 
 const selectedBoxType = computed(() => boxOptions.value.find((item) => item.name === config.value.product.boxType) || boxOptions.value[0])
 const unfolded = computed(() => {
   if (form.unfoldMode === 'manual' || !selectedShape.value.formulaText) return { length: Number(form.unfoldLength) || 0, width: Number(form.unfoldWidth) || 0 }
+  if (!form.boxVariant) return { length: 0, width: 0 }
   try {
     return computeUnfolded(selectedShape.value.id, { length: Number(form.length) || 0, width: Number(form.width) || 0, height: Number(form.height) || 0, thickness: Number(form.thickness) || 1.5, cover: Number(form.cover) || 15 }, form.boxVariant)
   } catch { return { length: 0, width: 0 } }
 })
 const unfoldAreaM2 = computed(() => (Number(unfolded.value.length || 0) * Number(unfolded.value.width || 0)) / 1000000)
+/** 当前盒型是否必须选卡盒/坑盒（自定义盒型手填展开尺寸，不需要） */
+const needsBoxVariant = computed(() => form.unfoldMode !== 'manual' && !!selectedShape.value.formulaText)
+/** 需要选但还没选：不显示金额、不能下单，避免按错的公式报价 */
+const boxVariantMissing = computed(() => needsBoxVariant.value && !form.boxVariant)
+const boxVariantLabel = computed(() => form.boxVariant === 'keng' ? '坑盒' : form.boxVariant === 'ka' ? '卡盒' : '')
 const selectedMaterial = computed(() => config.value.pricing.materials.find(m => m.name === form.material) || config.value.pricing.materials[0])
 const quantityTiers = computed(() => [...(selectedMaterial.value?.quantityTiers ?? [])].sort((a, b) => a.quantity - b.quantity))
 const quantityLocked = computed(() => config.value.pricing.quantityMode === 'options')
@@ -119,7 +126,7 @@ function applyConfig(value) {
   form.material = materialOptions.value.includes(form.material) ? form.material : materialOptions.value[0]
   form.treatment = treatmentOptions.value.includes(form.treatment) ? form.treatment : (treatmentOptions.value[0] || '')
   form.printMode = PRINT_MODES.includes(form.printMode) ? form.printMode : PRINT_MODES[0]
-  form.printRequirement = printRequirementOptions.value.includes(form.printRequirement) ? form.printRequirement : (printRequirementOptions.value[0] || '正常')
+  form.printRequirement = printRequirementOptions.value.includes(form.printRequirement) ? form.printRequirement : (printRequirementOptions.value[0] || '')
   form.glue = GLUE_OPTIONS.includes(form.glue) ? form.glue : GLUE_OPTIONS[0]
   form.processes = form.processes.filter(item => processOptions.value.includes(item.name))
   snapQuantity()
@@ -151,13 +158,14 @@ const contact = computed(() => config.value.contact || {})
 const contactEntries = computed(() => config.value.contactEntries || [])
 function safeContactUrl(value) { try { const url = new URL(value); return ['http:','https:','mqq:'].includes(url.protocol) ? url.href : '' } catch { return '' } }
 const qqUrl = computed(() => safeContactUrl(contact.value.qqContactUrl) || (/^[1-9][0-9]{4,14}$/.test(contact.value.qq || '') ? 'https://wpa.qq.com/msgrd?v=3&uin='+contact.value.qq+'&site=qq&menu=yes' : ''))
-const qrUrl = computed(() => contact.value.wechatQrUrl?.startsWith('/uploads/') ? new URL(contact.value.wechatQrUrl, new URL(configStore.apiBase, window.location.origin)).href : safeContactUrl(contact.value.wechatQrUrl))
+const qrUrl = computed(() => { const v = contact.value.wechatQrUrl || ''; return v.startsWith('/uploads/') ? resolveAssetUrl(v, configStore.apiBase) : safeContactUrl(v) })
 
 const { copy } = useClipboard({ legacy: true })
 async function copySummary() { try { await copy(checkoutSummary.value); copyMessage.value='完整报价已复制，请联系商家'; ElMessage.success('完整报价已复制，请联系商家') } catch { ElMessage.warning('未获得剪贴板权限，请选中下面文字手动复制') } }
 
 async function createOrder() {
   if (orderState.value==='loading') return
+  if (boxVariantMissing.value) { apiError.value='请先选择右上角盒型结构（卡盒 / 坑盒）'; ElMessage.warning('请先选择右上角盒型结构（卡盒 / 坑盒）'); return }
   orderState.value='loading'; apiError.value=''
   const input=quoteInput(), key=inputKey()
   try {
@@ -196,6 +204,7 @@ async function createOrder() {
     spotColorCharge, goodsTotal, shippingFee, total, displayed,
     materialOptions, treatmentOptions, processOptions,
     boxOptions, selectedBoxAsset, heroProductImage,
+    needsBoxVariant, boxVariantMissing, boxVariantLabel,
     selectBoxType, toggleProcess, snapQuantity, requestQuote, createOrder, copySummary,
     contact, contactEntries, qqUrl, qrUrl, loadRouteData,
   }

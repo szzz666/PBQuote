@@ -7,7 +7,7 @@ import ContactModal from '../../components/ContactModal.vue'
 import UnfoldDimsEditor from '../../components/UnfoldDimsEditor.vue'
 const route = useRoute()
 const isDemo = computed(() => route.path.startsWith('/demo'))
-const { GLUE_OPTIONS, PRINT_MODES, printRequirementOptions, boxOptions, checkoutSummary, config, contact, contactOpen, contactEntries, copyMessage, copySummary, createOrder, displayed, form, materialOptions, orderState, processOptions, qqUrl, qrUrl, quantityLocked, quantityTiers, selectBoxType, selectedShape, serverQuote, toggleProcess, treatmentOptions, unfoldAreaM2, unfolded } = useStorefrontQuote()
+const { GLUE_OPTIONS, PRINT_MODES, printRequirementOptions, boxOptions, checkoutSummary, config, contact, contactOpen, contactEntries, copyMessage, copySummary, createOrder, displayed, form, materialOptions, orderState, processOptions, qqUrl, qrUrl, quantityLocked, quantityTiers, selectBoxType, selectedShape, serverQuote, toggleProcess, treatmentOptions, unfoldAreaM2, unfolded, apiError, boxVariantMissing } = useStorefrontQuote()
 </script>
 
 <template>
@@ -21,6 +21,7 @@ const { GLUE_OPTIONS, PRINT_MODES, printRequirementOptions, boxOptions, checkout
     <main class="a-main">
       <section class="a-card">
         <div class="a-step"><b>1</b>选择盒型 <small>{{ boxOptions.length }} 种</small><span class="a-var"><button :class="{ on: form.boxVariant === 'ka' }" @click="form.boxVariant = 'ka'">卡盒</button><button :class="{ on: form.boxVariant === 'keng' }" @click="form.boxVariant = 'keng'">坑盒</button></span></div>
+        <p v-if="boxVariantMissing" class="a-hint">请先选择右上角盒型结构（卡盒 / 坑盒）</p>
         <div class="a-boxes">
           <button v-for="item in boxOptions" :key="item.name" class="a-box" :class="{ on: config.product.boxType === item.name }" @click="selectBoxType(item.name)">
             <img :src="item.icon" :alt="item.name"><span>{{ item.name }}</span>
@@ -80,8 +81,9 @@ const { GLUE_OPTIONS, PRINT_MODES, printRequirementOptions, boxOptions, checkout
     </main>
 
     <footer class="a-bottombar">
-      <div class="a-price"><small>预估总价</small><strong>￥{{ displayed.total.toFixed(2) }}</strong><em v-if="serverQuote">服务端报价</em></div>
-      <el-button class="a-order" type="primary" size="large" :loading="orderState === 'loading'" @click="createOrder">{{ orderState === 'success' ? '报价已复制' : '立即下单 ↗' }}</el-button>
+      <div class="a-price"><small>预估总价</small><strong v-if="boxVariantMissing">请先选择盒型</strong><strong v-else>￥{{ displayed.total.toFixed(2) }}</strong><em v-if="serverQuote">服务端报价</em></div>
+      <el-button class="a-order" type="primary" size="large" :disabled="boxVariantMissing" :loading="orderState === 'loading'" @click="createOrder">{{ orderState === 'success' ? '报价已复制' : '立即下单 ↗' }}</el-button>
+      <p v-if="apiError" class="a-hint a-hint-err">{{ apiError }}</p>
     </footer>
 
     <ContactModal :open="contactOpen" :entries="contactEntries" :checkout-summary="checkoutSummary" :copy-message="copyMessage" @close="contactOpen = false" @copy="copySummary" />
@@ -138,4 +140,6 @@ const { GLUE_OPTIONS, PRINT_MODES, printRequirementOptions, boxOptions, checkout
 .a-var button { border: none; background: #fff; color: #5b6570; padding: 4px 12px; font-size: 12px; cursor: pointer; }
 .a-var button + button { border-left: 1px solid #dce6d9; }
 .a-var button.on { background: var(--sf-main); color: #fff; }
+.a-hint { margin: 6px 0 0; font-size: 12px; color: #d97706; }
+.a-hint-err { color: #d93025; }
 </style>

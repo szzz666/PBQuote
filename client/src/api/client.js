@@ -1,7 +1,8 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1'
+// 生产构建必须走同源相对路径（nginx 反代 /api/），仅在开发环境回退到本地后端
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '/api/v1' : 'http://localhost:3000/api/v1')
 
 export const http = axios.create({ baseURL: API_BASE, timeout: 8000 })
 

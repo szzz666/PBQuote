@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { resolveAssetUrl } from '../utils/url'
 
 const props = defineProps({
   open: Boolean,
@@ -12,7 +13,7 @@ defineEmits(['close', 'copy'])
 function imgSrc(value) {
   const v = String(value || '').trim()
   if (!v) return ''
-  if (v.startsWith('/uploads/')) return new URL(v, window.location.origin).toString()
+  if (v.startsWith('/uploads/')) return resolveAssetUrl(v)
   if (v.startsWith('http://') || v.startsWith('https://')) return v
   return ''
 }

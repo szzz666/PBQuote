@@ -13,7 +13,7 @@ const props = defineProps({
   topbarLinks: { type: Array, default: () => [] },
   showEdit: { type: Boolean, default: false },
 })
-const emit = defineEmits(['login', 'logout', 'goStorefront', 'goAdmin', 'goNav', 'goEdit'])
+const emit = defineEmits(['login', 'logout', 'goStorefront', 'goAdmin', 'goNav', 'goEdit', 'changePassword'])
 
 const activeIndex = computed(() => (props.authenticated && props.isAdmin) ? '/admin' : '/storefront')
 const roleText = computed(() => props.user?.role === 'super_admin' ? '超级管理员' : '商家')
@@ -30,6 +30,7 @@ function onSelect(index) {
 function onCommand(cmd) {
   if (cmd === 'admin') emit('goAdmin')
   else if (cmd === 'edit') emit('goEdit')
+  else if (cmd === 'password') emit('changePassword')
   else if (cmd === 'logout') emit('logout')
 }
 </script>
@@ -63,7 +64,8 @@ function onCommand(cmd) {
               <el-dropdown-item disabled>{{ user?.username }} · {{ roleText }}</el-dropdown-item>
               <el-dropdown-item command="admin">商家后台</el-dropdown-item>
               <el-dropdown-item v-if="showEdit" command="edit">编辑页面</el-dropdown-item>
-              <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+              <el-dropdown-item divided command="password">修改密码</el-dropdown-item>
+              <el-dropdown-item command="logout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>

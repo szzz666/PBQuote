@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { http, API_BASE } from '../api/client'
-import { Shop, Brush, PriceTag, Box, Plus, TopRight, Link } from '@element-plus/icons-vue'
+import { Shop, Brush, Postcard, Coin, MagicStick, Operation, Document, Plus, TopRight, Link } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { useConfigStore } from '../stores/config'
 import { isSafeWebUrl, resolveAssetUrl } from '../utils/url'
@@ -17,10 +17,11 @@ const forcedColors = ref(false)
 if (typeof matchMedia === 'function') { try { forcedColors.value = matchMedia('(forced-colors: active)').matches } catch {} }
 watch(() => auth.authenticated, (ok) => { if (ok) auth.loginModalVisible = false })
 const section = ref('home')
+const pricingPart = computed(() => section.value.startsWith('pricing-') ? section.value.slice(8) : null)
+const isPricingSection = computed(() => section.value.startsWith('pricing-'))
 const slug = ref('')
 const config = ref(null)
 const merchants = ref([])
-const shapes = ref([])
 const busy = ref(false)
 const uploading = ref(false)
 const error = ref('')
@@ -28,8 +29,10 @@ const search = ref('')
 const merchantDraft = reactive({ name: '', slug: '', username: '', password: '', slogan: '' })
 const modules = [
   { id: 'brand', title: '品牌设置', icon: Brush },
-  { id: 'pricing', title: '价格规则', icon: PriceTag },
-  { id: 'boxes', title: '盒形公式', icon: Box },
+  { id: 'pricing-materials', title: '材质阶梯', icon: Coin },
+  { id: 'pricing-treatments', title: '表面处理', icon: MagicStick },
+  { id: 'pricing-processes', title: '工艺价格', icon: Operation },
+  { id: 'pricing-print', title: '印刷附加', icon: Document },
   { id: 'custom', title: '前台定制', icon: Link },
 ]
 const title = computed(() => section.value === 'home' ? '工作台' : section.value === 'merchants' ? '商户管理' : modules.find(x => x.id === section.value)?.title)
@@ -40,7 +43,7 @@ const stats = computed(() => ({
   processes: Object.keys(config.value?.pricing?.processes ?? {}).length,
 }))
 const filteredMerchants = computed(() => merchants.value.filter(x => (x.name + x.slug).toLowerCase().includes(search.value.toLowerCase())))
-const imageUrl = value => value?.startsWith('/uploads/') ? new URL(value, new URL(API_BASE, window.location.origin)).href : value
+const imageUrl = value => resolveAssetUrl(value, API_BASE)
 const blockId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 const blockImageUrl = (b) => resolveAssetUrl(b?.imageUrl, API_BASE)
 function addBlock(region = 'top') {
@@ -91,8 +94,8 @@ async function uploadContactImage(event, entry) {
 }
 async function save() {
   await run(async () => {
-const patch = section.value === 'pricing'
-      ? { pricing: buildPricing(), shipping: config.value.shipping, product: config.value.product }
+const patch = isPricingSection.value
+      ? { pricing: buildPricing(pricingPart.value), shipping: config.value.shipping, product: config.value.product }
       : section.value === 'custom'
         ? (validateCustom(), { storefrontLayout: ['a', 'b', 'c'].includes(config.value.storefrontLayout) ? config.value.storefrontLayout : 'b', storefrontTheme: themeOptions.some(t => t.id === config.value.storefrontTheme) ? config.value.storefrontTheme : 'green', topbarLinks: (config.value.topbarLinks || []), contentBlocks: (config.value.contentBlocks || []) })
         : { merchant: config.value.merchant, contact: config.value.contact, contactEntries: (config.value.contactEntries || []) }
@@ -116,6 +119,82 @@ async function toggleMerchant(item) {
 }
 async function deleteMerchant(item) {
   await run(async () => { await api('/admin/merchants/' + item.id, { method: 'DELETE' }); merchants.value = await api('/admin/merchants') }, '商户「' + item.name + '」已删除')
+}
+// —— 商户账号管理：编辑专属标识 / 登录账号 / 重置密码 ——
+const merchantEditorVisible = ref(false)
+const merchantEditorError = ref('')
+const merchantEditor = reactive({
+  id: '', name: '', originSlug: '', originUsername: '',
+  slug: '', slugConfirm: '', username: '', newPassword: '', passwordResult: '', passwordUser: '',
+})
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/
+const USERNAME_RE = /^[A-Za-z0-9_.@-]{3,120}$/
+const slugChanged = computed(() => merchantEditor.slug !== merchantEditor.originSlug)
+const usernameChanged = computed(() => merchantEditor.username !== merchantEditor.originUsername)
+const accountChanged = computed(() => slugChanged.value || usernameChanged.value)
+function openMerchantEditor(row) {
+  merchantEditorError.value = ''
+  Object.assign(merchantEditor, {
+    id: row.id, name: row.name || '',
+    originSlug: row.slug || '', originUsername: row.username || '',
+    slug: row.slug || '', slugConfirm: '', username: row.username || '',
+    newPassword: '', passwordResult: '', passwordUser: '',
+  })
+  merchantEditorVisible.value = true
+}
+function randomPassword() {
+  const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const bytes = new Uint32Array(12)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (n) => chars[n % chars.length]).join('')
+}
+function generateMerchantPassword() { merchantEditor.newPassword = randomPassword() }
+async function saveMerchantAccount() {
+  const slug = merchantEditor.slug.trim()
+  const username = merchantEditor.username.trim()
+  if (!SLUG_RE.test(slug)) { merchantEditorError.value = '专属标识需为 1-63 位小写字母、数字或连字符，且以字母或数字开头'; return }
+  if (!USERNAME_RE.test(username)) { merchantEditorError.value = '登录账号需为 3-120 位，仅支持字母、数字、下划线、点、@ 和连字符'; return }
+  if (slugChanged.value && merchantEditor.slugConfirm.trim() !== slug) { merchantEditorError.value = '两次输入的新专属标识不一致，请重新确认'; return }
+  merchantEditorError.value = ''
+  const changed = accountChanged.value
+  busy.value = true
+  try {
+    await api('/admin/merchants/' + merchantEditor.id + '/account', { method: 'PATCH', body: JSON.stringify({ slug, username }) })
+    merchants.value = await api('/admin/merchants')
+    merchantEditor.originSlug = slug; merchantEditor.originUsername = username; merchantEditor.slugConfirm = ''
+    merchantEditorVisible.value = false
+    if (changed) ok('商户账号已更新，该商户已被强制下线，请通知其使用新账号重新登录')
+    else ok('商户账号未发生变化')
+  } catch (e) { merchantEditorError.value = e.message; fail(e) } finally { busy.value = false }
+}
+async function resetMerchantPassword() {
+  const pwd = merchantEditor.newPassword.trim()
+  if (pwd && pwd.length < 6) { merchantEditorError.value = '自定义密码至少 6 位'; return }
+  merchantEditorError.value = ''
+  busy.value = true
+  try {
+    const data = await api('/admin/merchants/' + merchantEditor.id + '/password', { method: 'POST', body: JSON.stringify(pwd ? { password: pwd } : {}) })
+    merchantEditor.newPassword = ''
+    merchantEditor.passwordResult = data?.password || ''
+    merchantEditor.passwordUser = data?.username || merchantEditor.username
+    merchantEditor.originUsername = merchantEditor.passwordUser
+    merchants.value = await api('/admin/merchants')
+    if (merchantEditor.passwordResult) ok('密码已重置，请立即复制下面的新密码')
+    else ElMessage.warning('密码已重置，但服务端未返回明文密码，请再次重置以获取')
+  } catch (e) { merchantEditorError.value = e.message; fail(e) } finally { busy.value = false }
+}
+async function copyMerchantPassword() {
+  const text = merchantEditor.passwordResult
+  if (!text) return
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text)
+    else {
+      const ta = document.createElement('textarea')
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove()
+    }
+    ok('新密码已复制到剪贴板')
+  } catch { ElMessage.error('复制失败，请手动选择密码后复制') }
 }
 async function api(path, options = {}) {
   const method = options.method || 'GET'
@@ -149,7 +228,6 @@ async function chooseMerchant(value) {
   })
 }
 async function initialize() {
-  run(async () => { shapes.value = await api('/box-shapes') })
   if (superAdmin.value) { section.value = 'home'; slug.value = ''; config.value = null; await run(async () => { merchants.value = await api('/admin/merchants') }) }
   else if (user.value?.merchantSlug) await chooseMerchant(user.value.merchantSlug)
 }
@@ -162,28 +240,37 @@ function renameKey(obj, oldKey, newKey) {
   obj[target] = obj[oldKey]
   delete obj[oldKey]
 }
-function buildPricing() {
+function buildPricing(part) {
   const p = config.value.pricing
-  if (!Array.isArray(p.materials) || !p.materials.length) throw new Error('至少保留一种纸张材质')
-  const names = p.materials.map(m => (m.name || '').trim())
-  if (names.some(n => !n) || new Set(names).size !== names.length) throw new Error('材质名称不能重复或为空')
-  for (const m of p.materials) {
-    if (!Array.isArray(m.quantityTiers) || !m.quantityTiers.length) throw new Error('材质「' + m.name + '」至少要有一个数量档位')
-    if (m.quantityTiers.some(t => !Number.isSafeInteger(t.quantity) || t.quantity <= 0 || ![t.unitPricePerM2, t.minimumCharge].every(n => Number.isFinite(n) && n >= 0)) || new Set(m.quantityTiers.map(t => t.quantity)).size !== m.quantityTiers.length) throw new Error('「' + m.name + '」的数量档位需为不重复的正整数，价格必须为非负数')
-  }
+  const only = (name) => !part || part === name
   const treatmentNames = Object.keys(p.treatments || {})
-  if (treatmentNames.some(n => !n.trim()) || new Set(treatmentNames).size !== treatmentNames.length) throw new Error('表面处理名称不能重复或为空')
-  for (const n of treatmentNames) if (!(p.treatments[n].unitPricePerM2 >= 0)) throw new Error('表面处理单价无效')
   const processRows = Object.entries(p.processes || {})
-  if (processRows.some(([n]) => !n.trim()) || new Set(processRows.map(([n]) => n)).size !== processRows.length) throw new Error('工艺名称不能重复或为空')
-  for (const [, r] of processRows) if (!['area', 'times', 'piece'].includes(r.billingMode) || !(r.setupFee >= 0) || !(r.unitPrice >= 0)) throw new Error('工艺费用无效')
   const reqList = p.requirements?.list
-  if (!Array.isArray(reqList) || !reqList.length) throw new Error('至少保留一种印刷要求')
-  if (reqList.some(r => !String(r.name || '').trim()) || new Set(reqList.map(r => String(r.name || '').trim())).size !== reqList.length) throw new Error('印刷要求名称不能重复或为空')
-  for (const r of reqList) if (!(Number(r.rate) >= 0)) throw new Error('印刷要求系数无效')
-  if (!(p.print?.doubleSidedSurcharge >= 0)) throw new Error('双面加收系数无效')
-  if (!(p.glue?.unitPricePerPiece >= 0)) throw new Error('糊盒单价无效')
-  if (!(p.spotColor?.plateFeePerColor >= 0)) throw new Error('专色版费无效')
+  if (only('materials')) {
+    if (!Array.isArray(p.materials) || !p.materials.length) throw new Error('至少保留一种纸张材质')
+    const names = p.materials.map(m => (m.name || '').trim())
+    if (names.some(n => !n) || new Set(names).size !== names.length) throw new Error('材质名称不能重复或为空')
+    for (const m of p.materials) {
+      if (!Array.isArray(m.quantityTiers) || !m.quantityTiers.length) throw new Error('材质「' + m.name + '」至少要有一个数量档位')
+      if (m.quantityTiers.some(t => !Number.isSafeInteger(t.quantity) || t.quantity <= 0 || ![t.unitPricePerM2, t.minimumCharge].every(n => Number.isFinite(n) && n >= 0)) || new Set(m.quantityTiers.map(t => t.quantity)).size !== m.quantityTiers.length) throw new Error('「' + m.name + '」的数量档位需为不重复的正整数，价格必须为非负数')
+    }
+  }
+  if (only('treatments')) {
+    if (treatmentNames.some(n => !n.trim()) || new Set(treatmentNames).size !== treatmentNames.length) throw new Error('表面处理名称不能重复或为空')
+    for (const n of treatmentNames) if (!(p.treatments[n].unitPricePerM2 >= 0)) throw new Error('表面处理单价无效')
+  }
+  if (only('processes')) {
+    if (processRows.some(([n]) => !n.trim()) || new Set(processRows.map(([n]) => n)).size !== processRows.length) throw new Error('工艺名称不能重复或为空')
+    for (const [, r] of processRows) if (!['area', 'times', 'piece'].includes(r.billingMode) || !(r.setupFee >= 0) || !(r.unitPrice >= 0)) throw new Error('工艺费用无效')
+  }
+  if (only('print')) {
+    if (!Array.isArray(reqList) || !reqList.length) throw new Error('至少保留一种印刷要求')
+    if (reqList.some(r => !String(r.name || '').trim()) || new Set(reqList.map(r => String(r.name || '').trim())).size !== reqList.length) throw new Error('印刷要求名称不能重复或为空')
+    for (const r of reqList) if (!(Number(r.rate) >= 0)) throw new Error('印刷要求系数无效')
+    if (!(p.print?.doubleSidedSurcharge >= 0)) throw new Error('双面加收系数无效')
+    if (!(p.glue?.unitPricePerPiece >= 0)) throw new Error('糊盒单价无效')
+    if (!(p.spotColor?.plateFeePerColor >= 0)) throw new Error('专色版费无效')
+  }
   return {
     quantityMode: p.quantityMode === 'options' ? 'options' : 'custom',
     materials: p.materials.map(m => ({ name: m.name.trim(), quantityTiers: [...m.quantityTiers].sort((a, b) => a.quantity - b.quantity) })),
@@ -230,8 +317,7 @@ function buildPricing() {
           </div>
           <div class="ws-home-quick">
             <button @click="openSection('brand')"><el-icon><Postcard /></el-icon> 品牌设置</button>
-            <button @click="openSection('pricing')"><el-icon><Coin /></el-icon> 价格规则</button>
-            <button @click="openSection('boxes')"><el-icon><Box /></el-icon> 盒形公式</button>
+            <button @click="openSection('pricing-materials')"><el-icon><Coin /></el-icon> 价格规则</button>
 
           </div>
           <div v-if="superAdmin" class="workspace-panel">
@@ -255,8 +341,9 @@ function buildPricing() {
           <el-table v-else :data="filteredMerchants" stripe>
             <el-table-column prop="name" label="商户" min-width="160"><template #default="{ row }"><strong>{{ row.name }}</strong></template></el-table-column>
             <el-table-column prop="slug" label="专属标识" min-width="120" />
+            <el-table-column prop="username" label="账号" min-width="150"><template #default="{ row }"><span>{{ row.username || '—' }}</span></template></el-table-column>
             <el-table-column label="状态" width="110"><template #default="{ row }"><el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">{{ row.status === 'active' ? '启用中' : '已停用' }}</el-tag></template></el-table-column>
-            <el-table-column label="操作" width="280"><template #default="{ row }"><el-button size="small" type="primary" plain :disabled="busy" @click="chooseMerchant(row.slug)">进入配置</el-button><el-button size="small" :disabled="busy" @click="toggleMerchant(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-button><el-popconfirm title="确定删除该商户？删除后其账号将被停用，且不可恢复。" confirm-button-text="删除" cancel-button-text="取消" width="260" @confirm="deleteMerchant(row)"><template #reference><el-button size="small" type="danger" plain :disabled="busy">删除</el-button></template></el-popconfirm></template></el-table-column>
+            <el-table-column label="操作" width="380"><template #default="{ row }"><el-button size="small" :disabled="busy" @click="openMerchantEditor(row)">编辑</el-button><el-button size="small" type="primary" plain :disabled="busy" @click="chooseMerchant(row.slug)">进入配置</el-button><el-button size="small" :disabled="busy" @click="toggleMerchant(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-button><el-popconfirm title="确定删除该商户？删除后其账号将被停用，且不可恢复。" confirm-button-text="删除" cancel-button-text="取消" width="260" @confirm="deleteMerchant(row)"><template #reference><el-button size="small" type="danger" plain :disabled="busy">删除</el-button></template></el-popconfirm></template></el-table-column>
           </el-table>
           <el-divider />
           <el-form label-width="96px" style="max-width:480px">
@@ -267,6 +354,44 @@ function buildPricing() {
             <el-form-item label="初始密码"><el-input v-model="merchantDraft.password" type="password" show-password autocomplete="new-password" /></el-form-item>
             <el-button class="pb-btn-primary" type="primary" :loading="busy" :disabled="!merchantDraft.name || !merchantDraft.slug || !merchantDraft.username || !merchantDraft.password" @click="createMerchant">{{ busy ? '创建中…' : '创建商户' }}</el-button>
           </el-form>
+
+          <!-- 编辑商户：专属标识 / 登录账号 / 重置密码 -->
+          <el-dialog v-model="merchantEditorVisible" title="编辑商户" width="560px" :close-on-click-modal="false" append-to-body>
+            <el-form label-width="120px">
+              <el-form-item label="商户名称">
+                <el-input :model-value="merchantEditor.name" disabled />
+              </el-form-item>
+              <el-form-item label="专属标识">
+                <el-input v-model="merchantEditor.slug" maxlength="63" placeholder="1-63 位小写字母、数字或连字符" />
+              </el-form-item>
+              <el-form-item v-if="slugChanged" label="确认新标识">
+                <el-input v-model="merchantEditor.slugConfirm" maxlength="63" placeholder="再次输入新专属标识以确认" />
+              </el-form-item>
+              <el-form-item label="登录账号">
+                <el-input v-model="merchantEditor.username" maxlength="120" placeholder="3-120 位字母、数字或 _ . @ -" />
+              </el-form-item>
+            </el-form>
+            <el-alert v-if="slugChanged" type="warning" show-icon :closable="false" title="旧网址与已分享的图片直链将立即失效，该商户会被强制下线。" style="margin-bottom:12px" />
+            <el-alert v-if="merchantEditorError" type="error" show-icon :closable="false" :title="merchantEditorError" style="margin-bottom:12px" />
+            <el-divider content-position="left">重置密码</el-divider>
+            <div style="display:flex;gap:8px;align-items:center">
+              <el-input v-model="merchantEditor.newPassword" placeholder="留空则由服务端生成随机密码" maxlength="120" />
+              <el-button :disabled="busy" @click="generateMerchantPassword">生成随机密码</el-button>
+              <el-button type="warning" plain :disabled="busy" @click="resetMerchantPassword">重置密码</el-button>
+            </div>
+            <template v-if="merchantEditor.passwordResult">
+              <el-alert type="warning" show-icon :closable="false" title="此密码只显示一次，请立即复制转告商户" style="margin:12px 0 8px" />
+              <div style="display:flex;gap:8px;align-items:center">
+                <el-input :model-value="merchantEditor.passwordResult" readonly />
+                <el-button type="primary" plain @click="copyMerchantPassword">复制</el-button>
+              </div>
+              <p style="margin:8px 0 0;color:#909399;font-size:12px">登录账号：{{ merchantEditor.passwordUser }}</p>
+            </template>
+            <template #footer>
+              <el-button :disabled="busy" @click="merchantEditorVisible = false">取消</el-button>
+              <el-button type="primary" :loading="busy" @click="saveMerchantAccount">保存</el-button>
+            </template>
+          </el-dialog>
         </section>
 
         <!-- 商户配置区 -->
@@ -308,10 +433,9 @@ function buildPricing() {
             </section>
             <footer class="workspace-save"><span>保存后更新商户前台品牌与联系方式</span><el-button class="pb-btn-primary" type="primary" :loading="busy || uploading" native-type="submit">{{ busy || uploading ? '保存中…' : '保存品牌设置' }}</el-button></footer>
           </form>
-
-          <!-- 价格规则 -->
-          <form v-else-if="section === 'pricing'" novalidate @submit.prevent="save">
-            <section class="workspace-panel">
+          <!-- 价格规则 · 材质与数量阶梯 -->
+          <form v-else-if="section === 'pricing-materials'" novalidate @submit.prevent="save">
+<section class="workspace-panel">
               <div class="panel-heading"><h2>纸张材质与数量阶梯</h2><el-button type="primary" plain size="small" @click="config.pricing.materials.push({ name: '', quantityTiers: [{ quantity: 500, unitPricePerM2: 8.4, minimumCharge: 580 }] })"><el-icon style="vertical-align:-2px;margin-right:4px"><Plus /></el-icon>新增材质</el-button></div>
               <p class="formula-note">基础生产金额 = max(展开面积 × 数量 × 该材质档位平方米单价，该档最低消费)；数量 ≥ 档位起点取该档，低于最小档按最小档。</p>
               <article v-for="(m, mi) in config.pricing.materials" :key="mi" class="material-block">
@@ -325,7 +449,12 @@ function buildPricing() {
                 <el-button class="mt8" size="small" text type="primary" @click="m.quantityTiers.push({ quantity: 0, unitPricePerM2: 0, minimumCharge: 0 })"><el-icon style="vertical-align:-2px;margin-right:4px"><Plus /></el-icon>新增档位</el-button>
               </article>
             </section>
-            <section class="workspace-panel">
+            <footer class="workspace-save"><span>报价按材质数量阶梯档位计算；低于最低消费按最低消费计</span><el-button class="pb-btn-primary" type="primary" :loading="busy" native-type="submit">{{ busy ? '保存中…' : '保存材质与阶梯' }}</el-button></footer>
+          </form>
+
+          <!-- 价格规则 · 表面处理 -->
+          <form v-else-if="section === 'pricing-treatments'" novalidate @submit.prevent="save">
+<section class="workspace-panel">
               <div class="panel-heading"><h2>表面处理（前台单选）</h2><el-button size="small" type="primary" plain @click="config.pricing.treatments['新处理'] = { unitPricePerM2: 0.2 }"><el-icon style="vertical-align:-2px;margin-right:4px"><Plus /></el-icon>新增处理</el-button></div>
               <p class="formula-note">费用 = 展开总面积（展开尺寸 × 数量）× 元/㎡；前台单选。</p>
               <div class="rule-rows">
@@ -337,7 +466,12 @@ function buildPricing() {
                 </div>
               </div>
             </section>
-            <section class="workspace-panel">
+            <footer class="workspace-save"><span>费用 = 展开总面积（展开尺寸 × 数量）× 元/㎡；前台单选</span><el-button class="pb-btn-primary" type="primary" :loading="busy" native-type="submit">{{ busy ? '保存中…' : '保存表面处理' }}</el-button></footer>
+          </form>
+
+          <!-- 价格规则 · 工艺价格 -->
+          <form v-else-if="section === 'pricing-processes'" novalidate @submit.prevent="save">
+<section class="workspace-panel">
               <div class="panel-heading"><h2>工艺价格</h2><el-button size="small" type="primary" plain @click="config.pricing.processes['新工艺'] = { billingMode: 'area', setupFee: 150, unitPrice: 0.1 }"><el-icon style="vertical-align:-2px;margin-right:4px"><Plus /></el-icon>新增工艺</el-button></div>
               <p class="formula-note">费用 = 开机费 + 变动费（按面积：单价 × 图形面积 × 数量；按次：单价 × 次数 × 数量；按个：单价 × 数量。）</p>
               <div class="rule-rows">
@@ -350,14 +484,19 @@ function buildPricing() {
                 </div>
               </div>
             </section>
-            <section class="workspace-panel">
+            <footer class="workspace-save"><span>费用 = 开机费 + 变动费（按面积 / 按次 / 按个）；前台可多选</span><el-button class="pb-btn-primary" type="primary" :loading="busy" native-type="submit">{{ busy ? '保存中…' : '保存工艺价格' }}</el-button></footer>
+          </form>
+
+          <!-- 价格规则 · 印刷与附加参数 -->
+          <form v-else-if="section === 'pricing-print'" novalidate @submit.prevent="save">
+<section class="workspace-panel">
               <div class="panel-heading"><h2>印刷与附加参数</h2></div>
               <el-form label-width="150px" style="max-width:720px">
                 <el-form-item label="双面印刷加收系数"><el-input-number v-model="config.pricing.print.doubleSidedSurcharge" :min="0" :step="0.1" /><small class="param-hint">双面：基础生产金额 ×(1+系数)</small></el-form-item>
                 <el-form-item label="印刷要求（系数）">
                   <div class="aw-req-list">
                     <div v-for="(r, i) in config.pricing.requirements.list" :key="i" class="aw-req-row">
-                      <el-input v-model="r.name" placeholder="名称（如 正常/跟色/打样）" style="width:160px" />
+                      <el-input v-model="r.name" placeholder="名称（如 电脑色正常4色印/有样板跟色）" style="width:160px" />
                       <el-input-number v-model="r.rate" :min="0" :step="0.01" :precision="2" controls-position="right" style="width:140px" />
                       <span class="param-hint">× (1 + 系数)</span>
                       <el-button size="small" text type="danger" :disabled="config.pricing.requirements.list.length <= 1" @click="config.pricing.requirements.list.splice(i, 1)">删除</el-button>
@@ -372,7 +511,7 @@ function buildPricing() {
                 <el-form-item label="配送费（元）"><el-input-number v-model="config.shipping.fee" :min="0" :step="1" /></el-form-item>
               </el-form>
             </section>
-            <footer class="workspace-save"><span>报价按材质数量阶梯档位计算；低于最低消费按最低消费计</span><el-button class="pb-btn-primary" type="primary" :loading="busy" native-type="submit">{{ busy ? '保存中…' : '保存价格规则' }}</el-button></footer>
+            <footer class="workspace-save"><span>双面系数、印刷要求系数、糊盒单价、专色版费、免运费门槛、配送费</span><el-button class="pb-btn-primary" type="primary" :loading="busy" native-type="submit">{{ busy ? '保存中…' : '保存印刷与附加' }}</el-button></footer>
           </form>
 
           <!-- 前台定制 -->
@@ -418,23 +557,6 @@ function buildPricing() {
             </section>
             <footer class="workspace-save"><span>保存后商家前台立即生效</span><el-button class="pb-btn-primary" type="primary" :loading="busy" native-type="submit">{{ busy ? '保存中…' : '保存前台定制' }}</el-button></footer>
           </form>
-
-          <!-- 盒形公式 -->
-          <section v-else-if="section === 'boxes'">
-            <el-alert type="info" :closable="false" show-icon title="盒形展开公式为系统内置（卡盒/坑盒两套：坑盒含坑厚常量 3mm，双插/锁底/平口/一体成型参考分享印微坑类目，自动锁底/天地/抽屉为行业规则），后台不可编辑；展开面积 = 展开长 × 展开宽 ÷ 1,000,000（㎡）。" style="margin-bottom:14px" />
-            <article v-for="item in shapes" :key="item.id" class="workspace-panel">
-              <div class="panel-heading"><h2>{{ item.name }} <el-tag size="small" type="info">{{ item.id }}</el-tag></h2></div>
-              <p class="formula-note">{{ item.description }}</p>
-              <el-form label-width="120px" style="max-width:760px">
-                <el-form-item label="所需尺寸参数"><el-input :model-value="item.params.map(p => p.label + (p.defaultValue != null ? '（默认 ' + p.defaultValue + 'mm）' : '')).join('、')" disabled /></el-form-item>
-                <el-form-item label="卡盒·展开长公式"><el-input :model-value="item.formulaText.length" disabled /></el-form-item>
-                <el-form-item label="卡盒·展开宽公式"><el-input :model-value="item.formulaText.width" disabled /></el-form-item>
-                <el-form-item v-if="item.formulaTextKeng" label="坑盒·展开长公式"><el-input :model-value="item.formulaTextKeng.length" disabled /></el-form-item>
-                <el-form-item v-if="item.formulaTextKeng" label="坑盒·展开宽公式"><el-input :model-value="item.formulaTextKeng.width" disabled /></el-form-item>
-              </el-form>
-            </article>
-            <article class="workspace-panel"><div class="panel-heading"><h2>自定义盒型 <el-tag size="small" type="info">custom</el-tag></h2></div><p class="formula-note">已有展开图或特殊结构：客户在前台手动填写展开尺寸，报价按手填尺寸计算。</p></article>
-          </section>
 
         </template>
 

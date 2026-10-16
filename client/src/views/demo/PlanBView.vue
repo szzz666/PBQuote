@@ -7,7 +7,7 @@ import ContactModal from '../../components/ContactModal.vue'
 import UnfoldDimsEditor from '../../components/UnfoldDimsEditor.vue'
 const route = useRoute()
 const isDemo = computed(() => route.path.startsWith('/demo'))
-const { config, boxOptions, selectBoxType, form, selectedShape, unfolded, unfoldAreaM2, materialOptions, quantityLocked, quantityTiers, treatmentOptions, PRINT_MODES, printRequirementOptions, GLUE_OPTIONS, processOptions, toggleProcess, selectedBoxType, baseProductionAmount, treatmentCharge, glueCharge, spotColorCharge, processTotal, processCharges, goodsTotal, shippingFee, displayed, orderState, createOrder, contactOpen, contactEntries, contact, checkoutSummary, copyMessage, qqUrl, qrUrl, copySummary } = useStorefrontQuote()
+const { config, boxOptions, selectBoxType, form, selectedShape, unfolded, unfoldAreaM2, materialOptions, quantityLocked, quantityTiers, treatmentOptions, PRINT_MODES, printRequirementOptions, GLUE_OPTIONS, processOptions, toggleProcess, selectedBoxType, baseProductionAmount, treatmentCharge, glueCharge, spotColorCharge, processTotal, processCharges, goodsTotal, shippingFee, displayed, orderState, createOrder, contactOpen, contactEntries, contact, checkoutSummary, copyMessage, qqUrl, qrUrl, copySummary, apiError, boxVariantMissing } = useStorefrontQuote()
 </script>
 
 <template>
@@ -23,6 +23,7 @@ const { config, boxOptions, selectBoxType, form, selectedShape, unfolded, unfold
       <div class="b-left">
         <section class="b-panel">
           <div class="b-boxhead"><h3>① 盒型</h3><div class="b-var"><button :class="{ on: form.boxVariant === 'ka' }" @click="form.boxVariant = 'ka'">卡盒</button><button :class="{ on: form.boxVariant === 'keng' }" @click="form.boxVariant = 'keng'">坑盒</button></div></div>
+          <p v-if="boxVariantMissing" class="b-hint">请先选择右上角盒型结构（卡盒 / 坑盒）</p>
           <div class="b-boxes">
             <button v-for="item in boxOptions" :key="item.name" class="b-box" :class="{ on: config.product.boxType === item.name }" @click="selectBoxType(item.name)">
               <img :src="item.icon" :alt="item.name"><span>{{ item.name }}</span>
@@ -92,8 +93,9 @@ const { config, boxOptions, selectBoxType, form, selectedShape, unfolded, unfold
             <div><span>商品金额</span><b>￥{{ goodsTotal.toFixed(2) }}</b></div>
             <div><span>配送</span><b :class="{ free: shippingFee === 0 }">{{ shippingFee === 0 ? '免运费' : '￥' + shippingFee.toFixed(2) }}</b></div>
           </div>
-          <div class="b-total"><span>总计</span><strong>￥{{ displayed.total.toFixed(2) }}</strong></div>
-          <el-button class="b-order" type="primary" size="large" :loading="orderState === 'loading'" @click="createOrder">{{ orderState === 'success' ? '报价已复制' : '立即下单 ↗' }}</el-button>
+          <div class="b-total"><span>总计</span><strong v-if="boxVariantMissing">请先选择盒型</strong><strong v-else>￥{{ displayed.total.toFixed(2) }}</strong></div>
+          <el-button class="b-order" type="primary" size="large" :disabled="boxVariantMissing" :loading="orderState === 'loading'" @click="createOrder">{{ orderState === 'success' ? '报价已复制' : '立即下单 ↗' }}</el-button>
+          <p v-if="apiError" class="b-hint b-hint-err">{{ apiError }}</p>
         </div>
       </aside>
     </main>
@@ -153,4 +155,6 @@ const { config, boxOptions, selectBoxType, form, selectedShape, unfolded, unfold
 .b-var button { border: none; background: #fff; color: #5b6570; padding: 4px 12px; font-size: 12px; cursor: pointer; }
 .b-var button + button { border-left: 1px solid #dce6d9; }
 .b-var button.on { background: var(--sf-main); color: #fff; }
+.b-hint { margin: 6px 0 0; font-size: 12px; color: #d97706; }
+.b-hint-err { color: #d93025; }
 </style>
