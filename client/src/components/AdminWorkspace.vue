@@ -43,6 +43,20 @@ const stats = computed(() => ({
   processes: Object.keys(config.value?.pricing?.processes ?? {}).length,
 }))
 const filteredMerchants = computed(() => merchants.value.filter(x => (x.name + x.slug).toLowerCase().includes(search.value.toLowerCase())))
+// 商户列表分页（前端分页：当前商户量级小，一次拉全量后切片即可）
+const page = ref(1)
+const pageSize = ref(10)
+const pagedMerchants = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredMerchants.value.slice(start, start + pageSize.value)
+})
+// 搜索词或每页条数变化时回到第一页，避免停留在越界页
+watch([search, pageSize], () => { page.value = 1 })
+// 数据量变化（新建/删除商户）后防止当前页越界
+watch(filteredMerchants, (list) => {
+  const max = Math.max(1, Math.ceil(list.length / pageSize.value))
+  if (page.value > max) page.value = max
+})
 const imageUrl = value => resolveAssetUrl(value, API_BASE)
 const blockId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 const blockImageUrl = (b) => resolveAssetUrl(b?.imageUrl, API_BASE)
@@ -338,13 +352,24 @@ function buildPricing(part) {
         <section v-if="section === 'merchants' && superAdmin" class="workspace-panel">
           <div class="panel-heading"><h2>商户列表 <small>{{ merchants.length }}</small></h2><el-input v-model="search" placeholder="搜索名称或标识" clearable style="max-width:240px" /></div>
           <el-empty v-if="!merchants.length" description="暂无商户，创建第一个商户开始配置。" />
-          <el-table v-else :data="filteredMerchants" stripe>
+          <el-table v-else :data="pagedMerchants" stripe>
             <el-table-column prop="name" label="商户" min-width="160"><template #default="{ row }"><strong>{{ row.name }}</strong></template></el-table-column>
             <el-table-column prop="slug" label="专属标识" min-width="120" />
             <el-table-column prop="username" label="账号" min-width="150"><template #default="{ row }"><span>{{ row.username || '—' }}</span></template></el-table-column>
             <el-table-column label="状态" width="110"><template #default="{ row }"><el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">{{ row.status === 'active' ? '启用中' : '已停用' }}</el-tag></template></el-table-column>
             <el-table-column label="操作" width="380"><template #default="{ row }"><el-button size="small" :disabled="busy" @click="openMerchantEditor(row)">编辑</el-button><el-button size="small" type="primary" plain :disabled="busy" @click="chooseMerchant(row.slug)">进入配置</el-button><el-button size="small" :disabled="busy" @click="toggleMerchant(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-button><el-popconfirm title="确定删除该商户？删除后其账号将被停用，且不可恢复。" confirm-button-text="删除" cancel-button-text="取消" width="260" @confirm="deleteMerchant(row)"><template #reference><el-button size="small" type="danger" plain :disabled="busy">删除</el-button></template></el-popconfirm></template></el-table-column>
           </el-table>
+          <div class="aw-pager">
+            <span class="aw-pager-total">共 {{ filteredMerchants.length }} 个商户</span>
+            <el-pagination
+              v-model:current-page="page"
+              v-model:page-size="pageSize"
+              :page-sizes="[10, 20, 50]"
+              :total="filteredMerchants.length"
+              layout="sizes, prev, pager, next, jumper"
+              background
+            />
+          </div>
           <el-divider />
           <el-form label-width="96px" style="max-width:480px">
             <h3 style="margin:0 0 12px"><el-icon style="vertical-align:-2px"><Plus /></el-icon> 新增商户</h3>
@@ -523,9 +548,9 @@ function buildPricing(part) {
             <section class="workspace-panel">
               <div class="panel-heading"><h2>顶栏自定义入口</h2><span>显示在商家前台顶部导航，最多 6 个</span></div>
               <div style="display:flex;flex-direction:column;gap:8px;max-width:720px">
-                <div v-for="(l, i) in config.topbarLinks" :key="i" style="display:flex;gap:8px;align-items:center">
-                  <el-input v-model="l.name" placeholder="名称（如 产品目录）" style="width:180px" maxlength="30" />
-                  <el-input v-model="l.url" placeholder="https://… 或 /shop/… 站内路径" style="width:300px" />
+                <div v-for="(l, i) in config.topbarLinks" :key="i" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <el-input v-model="l.name" placeholder="名称（如 产品目录）" style="width:180px;min-width:140px" maxlength="30" />
+                  <el-input v-model="l.url" placeholder="https://… 或 /shop/… 站内路径" style="flex:1;min-width:240px" />
                   <el-button size="small" text type="danger" @click="config.topbarLinks.splice(i, 1)">删除</el-button>
                 </div>
                 <el-button size="small" plain :disabled="config.topbarLinks.length >= 6" @click="config.topbarLinks.push({ name: '', url: '' })">＋ 新增链接</el-button>
@@ -609,6 +634,8 @@ function buildPricing(part) {
 .ws-home-quick { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .ws-home-quick button { border: 1px solid #dce6d9; background: #fff; border-radius: 12px; padding: 16px 14px; font-size: 14px; color: var(--sf-strong); cursor: pointer; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .ws-home-quick button:hover { background: var(--sf-soft); }
+.aw-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+.aw-pager-total { color: #8a94a0; font-size: 13px; }
 .aw-req-list { display: flex; flex-direction: column; gap: 8px; min-width: 420px; }
 .aw-req-row { display: flex; align-items: center; gap: 10px; }
 </style>

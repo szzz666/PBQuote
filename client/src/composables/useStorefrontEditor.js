@@ -7,6 +7,7 @@ import { http } from '../api/client'
 import { isSafeWebUrl } from '../utils/url'
 import { REGION_W, BLOCK_MIN_W, BLOCK_MIN_H, SNAP_THRESHOLD, REGIONS } from '../utils/canvas'
 import { THEME_IDS } from '../config/themes'
+import { useTopbarEmbed } from './useTopbarEmbed'
 
 const clone = (v) => JSON.parse(JSON.stringify(v))
 const bId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -33,9 +34,11 @@ export function useStorefrontEditor() {
     Boolean(auth.token) && (isSuperAdmin.value || (auth.user?.role === 'merchant' && auth.user.merchantSlug === routeSlug.value)))
 
   function enterEdit() {
+    // 进入编辑时关闭顶栏嵌入层，避免 iframe 与编辑面板重叠
+    useTopbarEmbed().close()
     draft.value = {
       blocks: clone((configStore.config.contentBlocks || []).map((b) => ({ region: 'top', ...b }))),
-      links: clone(configStore.config.topbarLinks || []),
+      links: clone(configStore.config.topbarLinks || []).map((l) => ({ name: l.name || '', url: l.url || '', mode: l.mode === 'embed' ? 'embed' : 'link' })),
       layout: ['a', 'b', 'c'].includes(configStore.config.storefrontLayout) ? configStore.config.storefrontLayout : 'b',
       theme: THEME_IDS.includes(configStore.config.storefrontTheme) ? configStore.config.storefrontTheme : 'green',
     }
@@ -92,7 +95,7 @@ export function useStorefrontEditor() {
   }
 
   const links = computed(() => draft.value.links)
-  function addLink() { if (links.value.length < 6) draft.value.links.push({ name: '', url: '' }) }
+  function addLink() { if (links.value.length < 6) draft.value.links.push({ name: '', url: '', mode: 'link' }) }
   function removeLink(i) { draft.value.links.splice(i, 1) }
 
   function snapRect(rect, region, others, isResizeX, isResizeY) {
@@ -125,7 +128,7 @@ export function useStorefrontEditor() {
       const data = await http.patch('/merchant/' + encodeURIComponent(routeSlug.value) + '/config', {
         storefrontLayout: ['a', 'b', 'c'].includes(draft.value.layout) ? draft.value.layout : 'b',
         storefrontTheme: THEME_IDS.includes(draft.value.theme) ? draft.value.theme : 'green',
-        topbarLinks: draft.value.links,
+        topbarLinks: draft.value.links.map((l) => ({ name: l.name, url: l.url, mode: l.mode === 'embed' ? 'embed' : 'link' })),
         contentBlocks: draft.value.blocks.map((b) => ({ id: b.id, region: b.region || 'top', x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), imageUrl: (b.imageUrl || '').trim(), text: (b.text || '').trim(), link: (b.link || '').trim() })),
       })
       configStore.apply(data)
@@ -144,6 +147,7 @@ export function useStorefrontEditor() {
       if (!String(l.name || '').trim()) return '顶栏链接名称不能为空'
       if (!String(l.url || '').trim()) return '顶栏链接地址不能为空'
       if (!isSafeWebUrl(l.url)) return '顶栏链接仅支持 http/https 或站内路径'
+      if (l.mode === 'embed' && String(l.url).startsWith('/')) return '站内路径不支持嵌入，请改为跳转'
     }
     for (const b of list || []) {
       const region = ['top', 'left', 'right', 'bottom'].includes(b.region) ? b.region : 'top'

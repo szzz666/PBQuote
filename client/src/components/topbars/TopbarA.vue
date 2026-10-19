@@ -13,7 +13,7 @@ const props = defineProps({
   topbarLinks: { type: Array, default: () => [] },
   showEdit: { type: Boolean, default: false },
 })
-const emit = defineEmits(['login', 'logout', 'goStorefront', 'goAdmin', 'goNav', 'goEdit', 'changePassword'])
+const emit = defineEmits(['login', 'logout', 'goStorefront', 'goAdmin', 'goNav', 'goEmbed', 'goEdit', 'changePassword'])
 
 const activeIndex = computed(() => (props.authenticated && props.isAdmin) ? '/admin' : '/storefront')
 const roleText = computed(() => props.user?.role === 'super_admin' ? '超级管理员' : '商家')
@@ -24,8 +24,13 @@ const initialUser = computed(() => (props.user?.username || 'U').slice(0, 1).toU
 function onSelect(index) {
   if (index === '/admin') emit('goAdmin')
   else if (index === '/storefront') emit('goStorefront')
-  else if (index.startsWith('/')) emit('goNav', index)
-  else if (isSafeWebUrl(index)) window.open(index, '_blank', 'noopener,noreferrer')
+  else {
+    // 自定义链接：按配置的打开方式处理（跳转 / 嵌入）
+    const link = props.topbarLinks.find((l) => l?.url === index)
+    if (link?.mode === 'embed') emit('goEmbed', { url: index, name: link.name })
+    else if (index.startsWith('/')) emit('goNav', index)
+    else if (isSafeWebUrl(index)) window.open(index, '_blank', 'noopener,noreferrer')
+  }
 }
 function onCommand(cmd) {
   if (cmd === 'admin') emit('goAdmin')

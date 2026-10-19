@@ -33,7 +33,12 @@ describe('AppService', () => {
   });
 
   it('matches the nearest lower quantity tier per material', async () => {
-    const service = new AppService(database() as any);
+    const db = database();
+    db.loadConfigAdmin = jest.fn().mockResolvedValue(null);
+    db.saveConfig = jest.fn().mockResolvedValue(undefined);
+    const service = new AppService(db as any);
+    // 显式配置：专测「取不超过数量的最近一档」逻辑，与默认值无关
+    await service.updateConfig('default', { pricing: svcPricingBaseline() });
     const r = await service.quote('default', { quantity: 800, shapeId: 'double-insert', finishedDimensions: dims });
     expect(r.materialApplied.tierQuantity).toBe(500);
     expect(r.materialApplied.unitPricePerM2).toBe(8.4);
@@ -157,6 +162,24 @@ describe('AppService', () => {
     await expect(service.updateConfig('default', { contactEntries: [{ name: '', type: 'text', value: 'x' }] })).rejects.toThrow('名称不能为空');
     await expect(service.updateConfig('default', { contactEntries: [{ name: 'x', type: 'video', value: 'x' }] })).rejects.toThrow('类型无效');
     await expect(service.updateConfig('default', { contactEntries: [{ name: 'x', type: 'link', value: 'javascript:alert(1)' }] })).rejects.toThrow('联系链接');
+  });
+
+  it('uses the zck-based defaults (8 materials, 1000-piece start tiers)', async () => {
+    const db = database();
+    db.loadConfigAdmin = jest.fn().mockResolvedValue(null);
+    const service = new AppService(db as any);
+    const cfg = await service.getAdminConfig('default');
+    // 默认材质来自 zck：8 种，第一种 350克富桂白卡 从 1000 件起
+    expect(cfg.pricing.materials).toHaveLength(8);
+    expect(cfg.pricing.materials[0].name).toBe('350克富桂白卡');
+    expect(cfg.pricing.materials[0].quantityTiers[0]).toEqual({ quantity: 1000, unitPricePerM2: 4.1, minimumCharge: 180 });
+    // 表面处理单价 0、工艺开机费 200、丝印UV 按次
+    expect(cfg.pricing.treatments['光胶'].unitPricePerM2).toBe(0);
+    expect(cfg.pricing.processes['击凸'].setupFee).toBe(200);
+    expect(cfg.pricing.processes['丝印UV'].billingMode).toBe('times');
+    // 375银卡 8000 档已按确认修正为 3.8（zck 原值 38）
+    const silver = cfg.pricing.materials.find(m => m.name === '375银卡');
+    expect(silver.quantityTiers.find(t => t.quantity === 8000).unitPricePerM2).toBe(3.8);
   });
 
   it('computes larger unfolded dims for keng (corrugated) variant', async () => {

@@ -19,6 +19,9 @@ export function useStorefrontQuote() {
 
   const loading = ref(false)
   const apiError = ref('')
+  /** 前台不存在或已停用：整页遮罩，禁用全部报价交互 */
+  const storefrontUnavailable = ref(false)
+  const UNAVAILABLE_MESSAGE = '商家前台不存在或已停用'
   const quoteRequested = ref(false)
   const serverQuote = ref(null)
   const orderState = ref('idle')
@@ -132,17 +135,35 @@ function applyConfig(value) {
   snapQuantity()
 }
 
-let retried = false
+/** 判定是否是「前台不存在或已停用」 */
+  function isUnavailableError(e) {
+    const msg = String(e?.message || e || '')
+    return msg.includes('不存在或已停用') || msg.includes('Not Found')
+  }
+
+  let retried = false
+/** 父组件（StorefrontView）已加载过同一商户时直接复用，避免重复请求 */
+function alreadyLoaded(target) {
+  const cur = configStore.config
+  return cur && cur.merchant && cur.merchant.slug === target
+}
+
 async function loadRouteData() {
   apiError.value = ''; serverQuote.value = null; quoteRequested.value = false
+  storefrontUnavailable.value = false
+  // 父组件已加载过同一商户：直接套用，不再重复请求
+  if (alreadyLoaded(routeSlug.value)) { applyConfig(configStore.config); return }
   loading.value = true
   try { await configStore.loadStorefront(routeSlug.value); applyConfig(configStore.config) }
   catch (e) {
+    // 商家不存在或已停用：不重试，直接整页遮罩
+    if (isUnavailableError(e)) { storefrontUnavailable.value = true; apiError.value = ''; return }
     // 后端偶发 500（如重启窗口/瞬时抖动）时自动重试一次，避免页面直接报错
     if (retried) throw e
     retried = true
     await new Promise(r => setTimeout(r, 800))
-    await configStore.loadStorefront(routeSlug.value); applyConfig(configStore.config)
+    try { await configStore.loadStorefront(routeSlug.value); applyConfig(configStore.config) }
+    catch (e2) { if (isUnavailableError(e2)) storefrontUnavailable.value = true; else { apiError.value = String(e2?.message || e2); throw e2 } }
   }
   finally { loading.value = false }
 }
@@ -152,7 +173,7 @@ const quoteInput = () => ({ quantity: form.quantity, shapeId: selectedShape.valu
 const inputKey = () => JSON.stringify(quoteInput())
 watch(() => [JSON.stringify(form), config.value.product.boxType], () => { serverQuote.value=null; quoteRequested.value=false; contactOpen.value=false; orderState.value='idle' }, {flush:'sync'})
 
-async function requestQuote() { const key=inputKey(); apiError.value=''; serverQuote.value=null; quoteRequested.value=false; try { const result=await http.post('/storefront/'+routeSlug.value+'/quotes', quoteInput()); if(key!==inputKey()) return; serverQuote.value=result; quoteRequested.value=true } catch(e) {apiError.value=e.message} }
+async function requestQuote() { if (storefrontUnavailable.value) { apiError.value = UNAVAILABLE_MESSAGE; return } const key=inputKey(); apiError.value=''; serverQuote.value=null; quoteRequested.value=false; try { const result=await http.post('/storefront/'+routeSlug.value+'/quotes', quoteInput()); if(key!==inputKey()) return; serverQuote.value=result; quoteRequested.value=true } catch(e) {apiError.value=e.message} }
 
 const contact = computed(() => config.value.contact || {})
 const contactEntries = computed(() => config.value.contactEntries || [])
@@ -164,6 +185,7 @@ const { copy } = useClipboard({ legacy: true })
 async function copySummary() { try { await copy(checkoutSummary.value); copyMessage.value='完整报价已复制，请联系商家'; ElMessage.success('完整报价已复制，请联系商家') } catch { ElMessage.warning('未获得剪贴板权限，请选中下面文字手动复制') } }
 
 async function createOrder() {
+  if (storefrontUnavailable.value) { apiError.value = UNAVAILABLE_MESSAGE; ElMessage.error(UNAVAILABLE_MESSAGE); return }
   if (orderState.value==='loading') return
   if (boxVariantMissing.value) { apiError.value='请先选择右上角盒型结构（卡盒 / 坑盒）'; ElMessage.warning('请先选择右上角盒型结构（卡盒 / 坑盒）'); return }
   orderState.value='loading'; apiError.value=''
@@ -195,7 +217,7 @@ async function createOrder() {
   watch(() => routeSlug.value, () => { loadRouteData() })
 
   return {
-    loading, apiError, quoteRequested, serverQuote, orderState, checkoutSummary, contactOpen, copyMessage,
+    loading, apiError, quoteRequested, storefrontUnavailable, UNAVAILABLE_MESSAGE, serverQuote, orderState, checkoutSummary, contactOpen, copyMessage,
     routeSlug, config, form,
     PRINT_MODES, printRequirementOptions, GLUE_OPTIONS, BOX_VARIANTS,
     brandLogo, brandSubtitle, shapeCatalog, selectedShape, selectedBoxType, unfolded, unfoldAreaM2,

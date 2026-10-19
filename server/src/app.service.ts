@@ -31,17 +31,98 @@ interface Pricing {
   spotColor: { plateFeePerColor: number };
 }
 
-const defaultTiers: Tier[] = [
-  { quantity: 500, unitPricePerM2: 8.4, minimumCharge: 580 },
-  { quantity: 1000, unitPricePerM2: 5.6, minimumCharge: 850 },
-  { quantity: 2000, unitPricePerM2: 5.1, minimumCharge: 1080 },
-  { quantity: 3000, unitPricePerM2: 4.6, minimumCharge: 1380 },
-  { quantity: 5000, unitPricePerM2: 4, minimumCharge: 1900 },
-  { quantity: 10000, unitPricePerM2: 3.9, minimumCharge: 3700 },
+/** 默认材质阶梯：取自商户 zck（张传科小批量坑盒拼版）的实际配置 */
+const defaultMaterials: MaterialPricing[] = [
+  { name: '350克富桂白卡', quantityTiers: [
+      { quantity: 1000, unitPricePerM2: 4.1, minimumCharge: 180 },
+      { quantity: 2000, unitPricePerM2: 3.8, minimumCharge: 260 },
+      { quantity: 3000, unitPricePerM2: 3.5, minimumCharge: 360 },
+      { quantity: 4000, unitPricePerM2: 3.3, minimumCharge: 500 },
+      { quantity: 5000, unitPricePerM2: 3, minimumCharge: 550 },
+      { quantity: 6000, unitPricePerM2: 2.9, minimumCharge: 600 },
+      { quantity: 7000, unitPricePerM2: 2.9, minimumCharge: 630 },
+      { quantity: 8000, unitPricePerM2: 2.9, minimumCharge: 680 },
+      { quantity: 9000, unitPricePerM2: 2.9, minimumCharge: 730 },
+      { quantity: 10000, unitPricePerM2: 2.7, minimumCharge: 780 },
+  ] },
+  { name: '400克富桂白卡', quantityTiers: [
+      { quantity: 1000, unitPricePerM2: 4.8, minimumCharge: 300 },
+      { quantity: 2000, unitPricePerM2: 4.05, minimumCharge: 400 },
+      { quantity: 3000, unitPricePerM2: 3.95, minimumCharge: 550 },
+      { quantity: 4000, unitPricePerM2: 3.8, minimumCharge: 680 },
+      { quantity: 5000, unitPricePerM2: 3.7, minimumCharge: 750 },
+      { quantity: 6000, unitPricePerM2: 3.6, minimumCharge: 790 },
+      { quantity: 7000, unitPricePerM2: 3.5, minimumCharge: 830 },
+      { quantity: 8000, unitPricePerM2: 3.4, minimumCharge: 860 },
+      { quantity: 9000, unitPricePerM2: 3.4, minimumCharge: 890 },
+      { quantity: 10000, unitPricePerM2: 3.3, minimumCharge: 920 },
+  ] },
+  { name: '300克白卡+白E坑', quantityTiers: [
+      { quantity: 500, unitPricePerM2: 8.4, minimumCharge: 580 },
+      { quantity: 1000, unitPricePerM2: 5.6, minimumCharge: 850 },
+      { quantity: 2000, unitPricePerM2: 5.1, minimumCharge: 1080 },
+      { quantity: 3000, unitPricePerM2: 4.6, minimumCharge: 1380 },
+      { quantity: 5000, unitPricePerM2: 4, minimumCharge: 1900 },
+      { quantity: 10000, unitPricePerM2: 3.9, minimumCharge: 3700 },
+  ] },
+  { name: '300克白卡+黄E坑', quantityTiers: [
+      { quantity: 500, unitPricePerM2: 8.4, minimumCharge: 580 },
+      { quantity: 1000, unitPricePerM2: 5.6, minimumCharge: 850 },
+      { quantity: 2000, unitPricePerM2: 5.1, minimumCharge: 1080 },
+      { quantity: 3000, unitPricePerM2: 4.6, minimumCharge: 1380 },
+      { quantity: 5000, unitPricePerM2: 4, minimumCharge: 1900 },
+      { quantity: 10000, unitPricePerM2: 3.9, minimumCharge: 3700 },
+  ] },
+  { name: '300克灰底白+白E坑', quantityTiers: [
+      { quantity: 500, unitPricePerM2: 8.4, minimumCharge: 580 },
+      { quantity: 1000, unitPricePerM2: 5.6, minimumCharge: 850 },
+      { quantity: 2000, unitPricePerM2: 5.1, minimumCharge: 1080 },
+      { quantity: 3000, unitPricePerM2: 4.6, minimumCharge: 1380 },
+      { quantity: 5000, unitPricePerM2: 4, minimumCharge: 1900 },
+      { quantity: 10000, unitPricePerM2: 3.9, minimumCharge: 3700 },
+  ] },
+  { name: '300克灰底白+黄E坑', quantityTiers: [
+      { quantity: 500, unitPricePerM2: 8.4, minimumCharge: 580 },
+      { quantity: 1000, unitPricePerM2: 5.6, minimumCharge: 850 },
+      { quantity: 2000, unitPricePerM2: 5.1, minimumCharge: 1080 },
+      { quantity: 3000, unitPricePerM2: 4.6, minimumCharge: 1380 },
+      { quantity: 5000, unitPricePerM2: 4, minimumCharge: 1900 },
+      { quantity: 10000, unitPricePerM2: 3.9, minimumCharge: 3700 },
+  ] },
+  { name: '375银卡', quantityTiers: [
+      { quantity: 1000, unitPricePerM2: 6.1, minimumCharge: 360 },
+      { quantity: 2000, unitPricePerM2: 5, minimumCharge: 510 },
+      { quantity: 3000, unitPricePerM2: 4.7, minimumCharge: 600 },
+      { quantity: 4000, unitPricePerM2: 4.3, minimumCharge: 650 },
+      { quantity: 5000, unitPricePerM2: 4.08, minimumCharge: 750 },
+      { quantity: 6000, unitPricePerM2: 4, minimumCharge: 880 },
+      { quantity: 7000, unitPricePerM2: 3.9, minimumCharge: 1050 },
+      { quantity: 8000, unitPricePerM2: 3.8, minimumCharge: 1100 },
+      { quantity: 9000, unitPricePerM2: 3.6, minimumCharge: 1150 },
+      { quantity: 10000, unitPricePerM2: 3.3, minimumCharge: 1200 },
+  ] },
+  { name: '375素面镭射银', quantityTiers: [
+      { quantity: 1000, unitPricePerM2: 7.3, minimumCharge: 420 },
+      { quantity: 2000, unitPricePerM2: 6.2, minimumCharge: 600 },
+      { quantity: 3000, unitPricePerM2: 5.3, minimumCharge: 680 },
+      { quantity: 4000, unitPricePerM2: 4.8, minimumCharge: 780 },
+      { quantity: 5000, unitPricePerM2: 4.3, minimumCharge: 820 },
+      { quantity: 6000, unitPricePerM2: 4.1, minimumCharge: 880 },
+      { quantity: 7000, unitPricePerM2: 3.9, minimumCharge: 980 },
+      { quantity: 8000, unitPricePerM2: 3.8, minimumCharge: 1080 },
+      { quantity: 9000, unitPricePerM2: 3.7, minimumCharge: 1180 },
+      { quantity: 10000, unitPricePerM2: 3.6, minimumCharge: 1280 },
+  ] },
 ];
-const defaultMaterialNames = ['350克白卡'];
-const defaultTreatmentNames = ['光胶', '哑胶', '不过胶'];
-const defaultProcessNames = ['击凸', '击凹', '烫金', '烫银', '丝印UV', '贴窗口'];
+/** 默认表面处理（单价 0 元/㎡，与 zck 一致） */
+const defaultTreatments: Record<string, TreatmentRule> = { '光胶': { unitPricePerM2: 0 }, '哑胶': { unitPricePerM2: 0 }, '不过胶': { unitPricePerM2: 0 } };
+/** 默认工艺（开机费 200，丝印UV 按次计费，与 zck 一致） */
+const defaultProcesses: Record<string, ProcessRule> = { '击凸': { billingMode: 'area', setupFee: 200, unitPrice: 0.1 }, '击凹': { billingMode: 'area', setupFee: 200, unitPrice: 0.1 }, '烫金': { billingMode: 'area', setupFee: 200, unitPrice: 0.1 }, '烫银': { billingMode: 'area', setupFee: 200, unitPrice: 0.1 }, '丝印UV': { billingMode: 'times', setupFee: 200, unitPrice: 0.1 }, '贴窗口': { billingMode: 'area', setupFee: 200, unitPrice: 0.1 } };
+/** 旧结构迁移用的兜底阶梯：取默认材质的第 1 套 */
+const defaultTiers: Tier[] = structuredClone(defaultMaterials[0].quantityTiers);
+const defaultMaterialNames = defaultMaterials.map(m => m.name);
+const defaultTreatmentNames = Object.keys(defaultTreatments);
+const defaultProcessNames = Object.keys(defaultProcesses);
 const money = (n: number) => Number(n.toFixed(2));
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 /** 安全链接：http/https，或 / 开头的站内路径（含 /uploads/）。拒绝 javascript:/data://// 等 */
@@ -62,9 +143,9 @@ const defaultPrintRequirements: PrintRequirement[] = [
 
 const defaultPricing: Pricing = {
   quantityMode: 'custom',
-  materials: defaultMaterialNames.map(name => ({ name, quantityTiers: clone(defaultTiers) })),
-  treatments: Object.fromEntries(defaultTreatmentNames.map(n => [n, { unitPricePerM2: 0.2 }])),
-  processes: Object.fromEntries(defaultProcessNames.map(n => [n, { billingMode: 'area', setupFee: 150, unitPrice: 0.1 }])),
+  materials: clone(defaultMaterials),
+  treatments: clone(defaultTreatments),
+  processes: clone(defaultProcesses),
   print: { doubleSidedSurcharge: 0.6 },
   requirements: { list: clone(defaultPrintRequirements) },
   glue: { unitPricePerPiece: 0 },
@@ -355,10 +436,14 @@ const seed: any = {
       for (const l of patch.topbarLinks) {
         const name = String(l?.name ?? '').trim();
         const url = String(l?.url ?? '').trim();
+        const mode = String(l?.mode ?? 'link').trim();
         if (!name) throw new Error('顶栏链接名称不能为空');
         if (name.length > 30) throw new Error('顶栏链接名称不能超过 30 字');
         if (!url) throw new Error('顶栏链接地址不能为空');
         if (!safeWebUrl(url)) throw new Error('顶栏链接仅支持 http/https 或站内路径');
+        if (!['link', 'embed'].includes(mode)) throw new Error('顶栏链接打开方式无效');
+        // 站内路由（/shop/…）无法在 iframe 内嵌，只能跳转
+        if (mode === 'embed' && url.startsWith('/')) throw new Error('站内路径不支持嵌入，请改为跳转或填写完整网址');
       }
     }
     if (patch.contentBlocks !== undefined) {

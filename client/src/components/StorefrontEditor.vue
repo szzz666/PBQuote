@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { useStorefrontEditor } from '../composables/useStorefrontEditor'
 import { THEMES } from '../config/themes'
 import { http } from '../api/client'
@@ -7,18 +7,38 @@ import { ElMessage } from 'element-plus'
 
 const e = useStorefrontEditor()
 const showLinks = ref(false)
-const winX = ref(typeof window !== 'undefined' ? Math.max(8, window.innerWidth - 660) : 24)
+const BAR_W = 780 // 与 .se-bar 的 width 保持一致
+const winX = ref(24)
 const winY = ref(84)
+// 按真实窗口尺寸把浮窗夹在视口内（两侧都不越界）
+function clampWin() {
+  if (typeof window === 'undefined') return
+  const maxX = Math.max(8, window.innerWidth - Math.min(BAR_W, window.innerWidth - 16) - 12)
+  const maxY = Math.max(8, window.innerHeight - 120)
+  winX.value = Math.min(Math.max(8, winX.value), maxX)
+  winY.value = Math.min(Math.max(8, winY.value), maxY)
+}
+if (typeof window !== 'undefined') {
+  winX.value = Math.max(12, window.innerWidth - Math.min(BAR_W, window.innerWidth - 16) - 24)
+  winY.value = 84
+  clampWin()
+  window.addEventListener('resize', clampWin)
+}
 const winDrag = ref(null)
+// 每次打开编辑面板时重新把窗口夹进视口（此时才知道真实渲染尺寸）
+watch(() => e.editing.value, (on) => { if (on) nextTick(clampWin) })
 function dragWinStart(ev) {
-  if (ev.target.closest('button')) return
+  // 只允许在标题栏空白处拖动：点在输入框/下拉/按钮等交互元素上时不启动拖拽
+  if (ev.target.closest('button, input, textarea, .el-input, .el-select, .el-button, .el-input-number')) return
   winDrag.value = { sx: ev.clientX, sy: ev.clientY, ox: winX.value, oy: winY.value }
   window.addEventListener('pointermove', dragWinMove)
   window.addEventListener('pointerup', dragWinEnd)
 }
 function dragWinMove(ev) {
   const d = winDrag.value; if (!d) return
-  winX.value = Math.max(8, Math.min(window.innerWidth - 90, d.ox + ev.clientX - d.sx))
+  const w = Math.min(BAR_W, window.innerWidth - 16)
+  const maxX = Math.max(8, window.innerWidth - w - 12)
+  winX.value = Math.max(8, Math.min(maxX, d.ox + ev.clientX - d.sx))
   winY.value = Math.max(8, Math.min(window.innerHeight - 60, d.oy + ev.clientY - d.sy))
 }
 function dragWinEnd() {
@@ -94,9 +114,19 @@ async function uploadImage(event) {
         <div class="se-panel">
           <div class="se-panel-h"><b>顶栏链接</b><el-button size="small" :disabled="e.links.value.length >= 6" @click="e.addLink()">＋</el-button></div>
           <div v-for="(l, i) in e.links.value" :key="i" class="se-link-row">
-            <el-input v-model="l.name" size="small" placeholder="名称" style="width:150px" />
-            <el-input v-model="l.url" size="small" placeholder="https://… 或 /shop/…" style="flex:1" />
-            <el-button size="small" text type="danger" @click="e.removeLink(i)">删</el-button>
+            <div class="se-link-top">
+              <el-input v-model="l.name" size="small" placeholder="名称（如 产品目录）" maxlength="30" class="se-link-name" />
+              <el-button size="small" text type="danger" @click="e.removeLink(i)">删</el-button>
+            </div>
+            <el-input v-model="l.url" size="small" placeholder="https://… 或 /shop/…" class="se-link-url" />
+            <div class="se-link-mode">
+              <span>打开方式</span>
+              <el-select v-model="l.mode" size="small" style="width:110px">
+                <el-option label="跳转" value="link" />
+                <el-option label="嵌入" value="embed" :disabled="String(l.url || '').startsWith('/')" />
+              </el-select>
+              <small v-if="String(l.url || '').startsWith('/')" class="se-link-tip">站内路径只能跳转</small>
+            </div>
           </div>
         </div>
       </div>
@@ -117,14 +147,14 @@ async function uploadImage(event) {
 <style scoped>
 .se-fab { position: fixed; right: 24px; bottom: 24px; z-index: 60; background: var(--sf-strong); color: #fff; border-radius: 999px; padding: 10px 18px; font-size: 14px; cursor: pointer; box-shadow: 0 4px 14px rgba(63,113,52,.35); }
 .se-fab:hover { background: var(--sf-strong); }
-.se-bar { position: fixed; z-index: 58; width: 620px; max-width: 92vw; max-height: 76vh; overflow: auto; background: #fff; border: 1px solid #dfe6db; border-radius: 12px; box-shadow: 0 10px 34px rgba(0,0,0,.18); padding: 10px 16px 14px; }
+.se-bar { position: fixed; z-index: 58; width: 780px; max-width: 96vw; max-height: 80vh; overflow: auto; background: #fff; border: 1px solid #dfe6db; border-radius: 12px; box-shadow: 0 10px 34px rgba(0,0,0,.18); padding: 10px 16px 14px; }
 .se-bar-top { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; cursor: move; user-select: none; }
 .se-bar-top strong { font-size: 15px; color: #2b333b; }
 .se-hint { color: #8a94a0; font-size: 12px; flex: 1; }
 .se-ops { white-space: nowrap; }
 .se-body { display: flex; gap: 16px; }
 .se-col { flex: 1; min-width: 0; }
-.se-links { flex: 0 0 40%; }
+.se-links { flex: 0 0 44%; min-width: 300px; }
 .se-panel { border: 1px solid #ecefe9; border-radius: 10px; padding: 10px 12px; }
 .se-panel-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .se-panel-h b { font-size: 13px; color: #3d4750; }
@@ -133,11 +163,25 @@ async function uploadImage(event) {
 .se-field { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .se-field span { font-size: 12px; color: #5b6570; width: 30px; }
 .se-field .el-input { flex: 1; }
-.se-link-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.se-link-row { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px dashed #eef1ec; }
+.se-link-row:last-child { border-bottom: none; }
+.se-link-top { display: flex; align-items: center; gap: 6px; }
+.se-link-name { flex: 1; min-width: 120px; }
+.se-link-name :deep(.el-input__inner), .se-link-url :deep(.el-input__inner) { width: 100%; }
+.se-link-url { width: 100%; }
+.se-link-mode { display: flex; align-items: center; gap: 6px; }
+.se-link-mode > span { font-size: 12px; color: #5b6570; }
+.se-link-tip { color: #e6a23c; font-size: 11px; }
+.se-link-url :deep(.el-input__inner) { min-width: 0; }
 .se-addpanel { border: 1px solid #ecefe9; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
 .se-addrow { display: flex; flex-wrap: wrap; gap: 6px; }
 .se-addrow .el-button { margin-left: 0; }
 .se-hint { color: #8a94a0; font-size: 12px; margin-top: 6px; }
+@media (max-width: 860px) {
+  .se-bar { width: calc(100vw - 24px); }
+  .se-body { flex-direction: column; gap: 10px; }
+  .se-links { flex: none; min-width: 0; }
+}
 .se-mask { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; }
 .se-dialog { background: #fff; border-radius: 12px; padding: 20px 22px; text-align: center; }
 .se-dialog p { margin: 0 0 14px; color: #3d4750; }

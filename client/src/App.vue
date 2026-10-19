@@ -8,6 +8,7 @@ import { themeById, themeEpVars } from './config/themes'
 import { useConfigStore } from './stores/config'
 import { resolveAssetUrl } from './utils/url'
 import TopbarA from './components/topbars/TopbarA.vue'
+import { useTopbarEmbed } from './composables/useTopbarEmbed'
 import { http } from './api/client'
 
 const route = useRoute()
@@ -23,6 +24,7 @@ const config = computed(() => configStore.config)
 const onAdminRoute = computed(() => route.path.startsWith('/admin'))
 const onStorefrontRoute = computed(() => route.path.startsWith('/shop'))
 const storefrontEditor = useStorefrontEditor()
+const topbarEmbed = useTopbarEmbed()
 const showEditEntry = computed(() => onStorefrontRoute.value && storefrontEditor.canEdit.value && !storefrontEditor.editing.value)
 
 // 前台主题：前台按当前商家配色应用 CSS 变量；非前台（后台/演示）回到默认绿
@@ -71,6 +73,13 @@ async function login() {
   } catch (e) { apiError.value = e.message } finally { loginBusy.value = false }
 }
 function logout() { auth.logout().then(() => router.push('/shop/' + (user.value?.merchantSlug || 'default'))) }
+// 顶栏站内跳转：先关闭可能存在的嵌入层，再切路由
+// 统一的顶栏跳转：先关闭嵌入层，再切路由（同路由跳转的 reject 直接忽略）
+function goWithClose(path) { topbarEmbed.close(); router.push(path).catch(() => {}) }
+function goNav(path) { goWithClose(path) }
+// 没有「返回报价」按钮，用户靠顶栏「客户报价前台 / 商家后台」离开嵌入页
+function goStorefront() { goWithClose('/shop/' + config.merchant.slug) }
+function goAdmin() { goWithClose('/admin') }
 function copyAddress() { navigator.clipboard?.writeText(address.value); ElMessage.success('前台地址已复制') }
 watch(loginModalVisible, (open) => { if (!open) apiError.value = '' })
 // 保险：已登录时强制关闭登录弹窗，防止 42% 深色遮罩残留盖住页面
@@ -123,9 +132,10 @@ async function submitPassword() {
     :show-edit="showEditEntry"
     @login="auth.loginModalVisible = true"
     @logout="logout"
-    @go-storefront="router.push('/shop/' + config.merchant.slug)"
-    @go-admin="router.push('/admin')"
-    @go-nav="router.push($event)"
+    @go-storefront="goStorefront"
+    @go-admin="goAdmin"
+    @go-nav="goNav"
+    @go-embed="(e) => topbarEmbed.open(e.url, e.name)"
     @go-edit="storefrontEditor.enterEdit()"
     @change-password="openPasswordDialog"
   />

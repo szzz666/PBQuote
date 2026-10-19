@@ -8,7 +8,7 @@
 ## 零、SSH 连接信息（部署必备，已内联进模板）
 
 ```
-主机：111.230.227.159      端口：22      用户：root      密码：Zdbjxtfwq111
+主机：111.230.227.159      端口：22      用户：root      密码：fusanpinbano734@HengYang
 认证方式：密码登录（无密钥 / 无 sshpass）
 指纹：SHA256:pkhdfzt/5rR+Op2NY/OMjOBlP+ugJdeakMOvZb8R3B0
 本机连接方式：/usr/bin/expect（macOS 自带），禁用 WebSSH
@@ -30,7 +30,7 @@ cat > /tmp/run.exp <<'EOF'
 set timeout 180
 spawn bash -c "scp -o StrictHostKeyChecking=no /tmp/remote.sh root@111.230.227.159:/tmp/remote.sh && ssh -o StrictHostKeyChecking=no root@111.230.227.159 'bash /tmp/remote.sh'"
 expect {
-  "*assword:" { send "Zdbjxtfwq111\r"; exp_continue }
+  "*assword:" { send "fusanpinbano734@HengYang\r"; exp_continue }
   eof
 }
 EOF
@@ -46,10 +46,10 @@ expect /tmp/run.exp 2>&1 | grep -vE "Warning|assword|Last login|release|System i
 ```
 请修改 <你要改的功能>，改完后自动同步到服务器并验证。
 
-【SSH 连接】主机 111.230.227.159，端口 22，用户 root，密码 Zdbjxtfwq111（密码登录，无密钥）。
+【SSH 连接】主机 111.230.227.159，端口 22，用户 root，密码 fusanpinbano734@HengYang（密码登录，无密钥）。
 本机用 /usr/bin/expect 驱动 scp/ssh（不要用 WebSSH，会话会假死）：
   spawn bash -c "scp -o StrictHostKeyChecking=no 本地文件 root@111.230.227.159:/远端路径 && ssh -o StrictHostKeyChecking=no root@111.230.227.159 'bash /tmp/remote.sh'"
-  expect { "*assword:" { send "Zdbjxtfwq111\r"; exp_continue } eof }
+  expect { "*assword:" { send "fusanpinbano734@HengYang\r"; exp_continue } eof }
 远程命令一律先写成 .sh 再 scp 执行，不要在 expect 里内联复杂引号。
 
 【部署目标】前端 /www/wwwroot/PBQuote/client/dist；后端 /www/wwwroot/PBQuote/server（pm2 进程名 main，端口 8080）。
@@ -78,7 +78,7 @@ expect /tmp/run.exp 2>&1 | grep -vE "Warning|assword|Last login|release|System i
 | 项 | 值 |
 |---|---|
 | 服务器 IP | `111.230.227.159` |
-| SSH | 端口 `22`，用户 `root`，密码 `Zdbjxtfwq111`（密码登录，无密钥） |
+| SSH | 端口 `22`，用户 `root`，密码 `fusanpinbano734@HengYang`（密码登录，无密钥） |
 | 系统 | Ubuntu + 宝塔面板（面板端口 18488，nginx 80/888） |
 | 后端目录 | `/www/wwwroot/PBQuote/server`，入口 `dist/main.js` |
 | 后端进程 | pm2 名称 `main`，端口 `8080`，全局前缀 `api/v1` |
@@ -107,7 +107,7 @@ expect /tmp/run.exp 2>&1 | grep -vE "Warning|assword|Last login|release|System i
 set timeout 180
 spawn bash -c "scp -o StrictHostKeyChecking=no /tmp/dist.tgz root@111.230.227.159:/tmp/dist.tgz && scp -o StrictHostKeyChecking=no /tmp/deploy.sh root@111.230.227.159:/tmp/deploy.sh && ssh -o StrictHostKeyChecking=no root@111.230.227.159 'bash /tmp/deploy.sh'"
 expect {
-  "*assword:" { send "Zdbjxtfwq111\r"; exp_continue }
+  "*assword:" { send "fusanpinbano734@HengYang\r"; exp_continue }
   eof
 }
 ```
