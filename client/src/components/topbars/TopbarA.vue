@@ -32,6 +32,9 @@ function onSelect(index) {
     else if (isSafeWebUrl(index)) window.open(index, '_blank', 'noopener,noreferrer')
   }
 }
+// 兜底：直接用原生 click 触发，避免依赖 el-menu 的 select 事件在"已激活项"上的行为差异
+function onStorefrontClick() { emit('goStorefront') }
+
 function onCommand(cmd) {
   if (cmd === 'admin') emit('goAdmin')
   else if (cmd === 'edit') emit('goEdit')
@@ -51,7 +54,7 @@ function onCommand(cmd) {
     </div>
 
     <el-menu :default-active="activeIndex" mode="horizontal" :ellipsis="false" class="tb-a-menu" @select="onSelect">
-      <el-menu-item index="/storefront">客户报价前台</el-menu-item>
+      <el-menu-item index="/storefront" @click="onStorefrontClick">客户报价前台</el-menu-item>
       <el-menu-item v-for="l in topbarLinks" :key="l.name" :index="l.url">{{ l.name }}</el-menu-item>
     </el-menu>
 
@@ -81,7 +84,7 @@ function onCommand(cmd) {
 </template>
 
 <style scoped>
-.tb-a { height: 64px; padding: 0 2vw; display: flex; align-items: center; gap: 22px; background: #fff; border-bottom: 1px solid var(--el-border-color-lighter, #e7ebe5); position: sticky; top: 0; z-index: 20; --el-menu-item-height: 64px; --el-menu-active-color: var(--el-color-primary, var(--sf-main)); --el-menu-hover-bg-color: transparent; }
+.tb-a { height: 64px; padding: 0 2vw; display: flex; align-items: center; gap: 22px; background: #fff; border-bottom: 1px solid var(--el-border-color-lighter, #e7ebe5); position: sticky; top: 0; z-index: 100; --el-menu-item-height: 64px; --el-menu-active-color: var(--el-color-primary, var(--sf-main)); --el-menu-hover-bg-color: transparent; }
 .tb-a-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .tb-a-logo { background: linear-gradient(135deg, var(--sf-main), var(--sf-strong)); color: #fff; font-weight: 800; font-size: 17px; flex: 0 0 auto; }
 .tb-a-titles { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; max-width: 240px; }

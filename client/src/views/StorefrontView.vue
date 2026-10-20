@@ -89,12 +89,8 @@ onBeforeUnmount(() => { if (typeof window !== 'undefined') window.removeEventLis
 // 切换嵌入地址时先复位高度
 watch(() => embed.activeUrl.value, () => { frameHeight.value = '100%' })
 
-// 嵌入层铺满视口：打开时锁定页面滚动，关闭/离开时恢复
-watch(() => embed.isOpen.value, (open) => {
-  if (typeof document === 'undefined') return
-  document.body.style.overflow = open ? 'hidden' : ''
-}, { immediate: true })
-onBeforeUnmount(() => { if (typeof document !== 'undefined') document.body.style.overflow = '' })
+// 注意：不要锁 body 滚动。否则 .tb-a 的 position: sticky 会失去滚动上下文，
+// 顶栏可能被 fixed 的嵌入层盖住或滚出视口，导致「客户报价前台」点不到。
 </script>
 
 <template>
@@ -158,8 +154,10 @@ onBeforeUnmount(() => { if (typeof document !== 'undefined') document.body.style
 
 /* 顶栏嵌入：覆盖顶部栏（64px）以下的全部区域，无边框无圆角 */
 .sv-embed {
-  position: fixed; top: var(--topbar-h, 64px); left: 0; right: 0; bottom: 0;
-  z-index: 15; background: #fff; overflow-y: auto; overflow-x: hidden;
+  /* 从顶栏下沿开始，确保顶栏区域永不被覆盖 */
+  position: fixed; top: var(--topbar-h, 65px); left: 0; right: 0; bottom: 0;
+  z-index: 10; background: #fff; overflow-y: auto; overflow-x: hidden;
+  pointer-events: auto;
 }
 .sv-embed-frame { width: 100%; min-height: 100%; border: 0; display: block; background: #fff; }
 .sv-embed-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #8a94a0; font-size: 13px; background: #fff; }

@@ -78,7 +78,12 @@ function logout() { auth.logout().then(() => router.push('/shop/' + (user.value?
 function goWithClose(path) { topbarEmbed.close(); router.push(path).catch(() => {}) }
 function goNav(path) { goWithClose(path) }
 // 没有「返回报价」按钮，用户靠顶栏「客户报价前台 / 商家后台」离开嵌入页
-function goStorefront() { goWithClose('/shop/' + config.merchant.slug) }
+function goStorefront() {
+  // 关掉嵌入层即可回到报价视图；路由已在前台时不必再跳（避免同路由无变化的困惑）
+  topbarEmbed.close()
+  const target = '/shop/' + (config.value.merchant?.slug || 'default')
+  if (route.path !== target) router.push(target).catch(() => {})
+}
 function goAdmin() { goWithClose('/admin') }
 function copyAddress() { navigator.clipboard?.writeText(address.value); ElMessage.success('前台地址已复制') }
 watch(loginModalVisible, (open) => { if (!open) apiError.value = '' })
